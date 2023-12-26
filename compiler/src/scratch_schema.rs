@@ -1,3 +1,6 @@
+//! Raw structure of a scratch project json file.
+
+#![allow(non_snake_case)]
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Result, Value};
