@@ -23,9 +23,12 @@ pub struct Block {
     pub opcode: String,
     pub next: Option<String>,
     pub parent: Option<String>,
-    pub inputs: Value,
-    pub fields: Value
+    pub inputs: Option<HashMap<String, Value>>,
+    pub fields: Option<Value>
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Operand(usize, String);
 
 pub fn parse(raw_json: &str) -> Result<ScratchProject> {
     serde_json::from_str(raw_json)

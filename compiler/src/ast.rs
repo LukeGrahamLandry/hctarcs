@@ -1,8 +1,28 @@
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Project {
+    pub targets: Vec<Sprite>
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Sprite {
+    pub functions: Vec<Func>
+}
+
+/// A stack of scratch blocks with a trigger
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Func {
+    pub start: Trigger,
+    pub body: Vec<Stmt>
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
     pub op: Stmt
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Stmt {
     // Motion
     MoveSteps(f64),
@@ -28,14 +48,18 @@ pub enum Stmt {
     DeleteThisClone,
     // Sensing
     AskAndWait(String),
-    SetDraggable(bool)
+    SetDraggable(bool),
+
+    UnknownOpcode(String)
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Duration {
     Default,
     Secs(f64)
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Expr {
     Bin(BinOp, Box<Expr>, Box<Expr>),
     Un(BinOp, Box<Expr>),
@@ -44,6 +68,7 @@ pub enum Expr {
 }
 
 // TODO: separate types?
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BuiltinVar {
     Timer,
     Loudness,
@@ -74,6 +99,7 @@ pub enum BuiltinVar {
     IsKeyPressed(KeyId)
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BinOp {
     Add,
     Sub,
@@ -90,6 +116,7 @@ pub enum BinOp {
     StrContains
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UnOp {
     Not,
     Round,
@@ -107,12 +134,14 @@ pub enum UnOp {
     Pow10
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RotStyle {
     LeftRight,
     DontRotate,
     AllAround
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PosTarget {
     Random,
     Mouse,
@@ -120,6 +149,7 @@ pub enum PosTarget {
     Pos { x: f64, y: f64 },
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Trigger {
     FlagClicked,
     KeyPressed(KeyId),
@@ -130,7 +160,7 @@ pub enum Trigger {
 
 macro_rules! int_key {
     ($name:ident) => {
-        #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+        #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
         pub struct $name(usize);
     };
 }

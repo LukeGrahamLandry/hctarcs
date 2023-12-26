@@ -1,4 +1,44 @@
 
+## Parsing Ast
+
+So it has map of blocks with next pointers. Find ones with entry point opcodes and then follow the linked list to build up the stack.
+`inputs` is a map of named arguments. Math has `NUM1` and `NUM2`, logical has `OPERAND1` and `OPERAND2`, etc.
+
+Then for custom blocks:
+- procedures_definition: 
+  - entry point for a stack.
+  - `inputs[custom_block]` is a procedures_prototype.
+  - `next` is the first block in the body.
+  - When the body wants to reference an argument it uses another `argument_reporter_string_number` block?
+- procedures_prototype: 
+  - `inputs` keys are local arg names as used in inputs of procedures_call .
+  - `inputs` values are argument_reporter_string_number.
+  - no next.
+  - `mutation` field with extra info
+    - `argumentids` match input keys
+    - `argumentnames` match `fields[0]` of corresponding argument_reporter_string_number
+    - `proccode` gives a string for the function name which I think is how procedures_call references it instead of by block id 
+- procedures_call
+  - another `mutation` field 
+- argument_reporter_string_number: 
+  - `fields[VALUE]` is name of the argument
+
+## Indirect Lisp Idea (Dec 26)
+
+- https://github.com/Johan-Mi/scratch-compiler
+- https://github.com/Johan-Mi/sb3-builder
+- https://github.com/Johan-Mi/unsb3
+- https://github.com/Johan-Mi/linrays
+
+Found something fucking amazing! Compile lisp to a scratch project. 
+Can use this for testing my thing without needing to write everything in the gui. 
+
+This leads to the idea of the most indirect lisp compiler: take your lisp and compile it to a scratch project 
+with their thing and then compile that scratch project to rust and then compile that. 
+
+They also have a native backend using cranelift (but no frontend accepting sb3 that I can see). 
+It looks like it doesn't have graphics or concurrent sprites yet tho. 
+
 ## Ast Chore (Dec 25)
 
 I'm not awake enough to do any real work, so I figure I'll do some drudgery of

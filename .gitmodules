@@ -1,0 +1,6 @@
+[submodule "vendor/scratch-compiler"]
+	path = vendor/scratch-compiler
+	url = https://github.com/Johan-Mi/scratch-compiler.git
+[submodule "vendor/linrays"]
+	path = vendor/linrays
+	url = https://github.com/Johan-Mi/linrays.git

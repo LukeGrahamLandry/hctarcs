@@ -1,6 +1,9 @@
 [workspace]
 members = [
     "compiler",
-    "runtime"
+    "runtime",
+]
+exclude = [
+    "vendor/scratch-compiler",
 ]
 resolver = "2"
