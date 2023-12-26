@@ -1,4 +1,19 @@
 
+## Ast Chore (Dec 25)
+
+I'm not awake enough to do any real work, so I figure I'll do some drudgery of
+transcribing nice types for all the different blocks.
+
+There's pretty much the normal programming language structure.
+- Statements that perform some action to the simulation state. 
+- Control structures that operate on blocks of statements.
+- Different expression operations that return values. 
+
+There are some kinda interesting representation choices. 
+- Should custom blocks be inlined? I guess not, it would be very cool if the generated code was readable. 
+- Distinguish between time builtins, pos/dir, local properties, globals?
+- Are math functions unary operators? Why is `not` more special than `sin`?
+
 ## New Beginnings (Dec 25)
 
 - https://scratch-tutorial.readthedocs.io/fr/latest/1_intro/intro.html
@@ -17,4 +32,3 @@ format that has less redundant info (unique ids, positions, etc.) so its less aw
 
 Seems like actually compiling it should be cool and different from other languages 
 because they've got a very event driven / message passing thing going on. 
-
