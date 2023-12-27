@@ -34,6 +34,14 @@ impl SpriteBase {
     pub fn motion_sety(&mut self, y: f64) {
         self.y = y;
     }
+
+    pub fn motion_xposition(&self) -> f64 {
+        self.x
+    }
+
+    pub fn motion_yposition(&self) -> f64 {
+        self.y
+    }
 }
 
 // TODO: depend on rand

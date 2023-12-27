@@ -42,19 +42,3 @@ impl<Msg: Clone + Copy, Globals> World<Msg, Globals> {
         }
     }
 }
-
-pub struct Cat {
-
-}
-
-impl Sprite<usize, usize> for Cat {
-    fn receive(&mut self, sprite: &mut SpriteBase, globals: &mut usize, msg: usize) {
-        todo!()
-    }
-}
-
-impl Cat {
-    fn hello(&mut self, sprite: &mut SpriteBase, globals: &mut usize) {
-
-    }
-}

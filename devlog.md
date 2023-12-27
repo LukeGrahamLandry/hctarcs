@@ -36,6 +36,11 @@ Annoying that argument_reporter_string_number only has readable name and procedu
 Actually it doesn't matter because they're ordered, nvm.
 
 TODO: type inference for string/num/bool variables. no bool variables but could recognise patterns like a string that is always true/false or number 1/0 always compared. 
+      doing hacky things rn and just treating "true" as 1.0 and "false" as 0.0 so everything can stay floats. 
+      need to fix this! 
+
+It compiles! 
+TODO: parse colour arg, render pen, main entry point. 
 
 ## Parsing Ast (Dec 26)
 

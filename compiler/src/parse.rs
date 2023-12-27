@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use crate::ast::{BinOp, Expr, Func, Proc, Project, Sprite, Stmt, SType, Trigger, UnOp, VarId};
+use crate::ast::Expr::UnknownExpr;
 use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject, StopOp};
 
 macro_rules! unwrap_input {
@@ -42,7 +43,7 @@ impl From<ScratchProject> for Project {
 }
 
 fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
-    target.variables.iter().enumerate().map(|(i, (k, v))| {
+    target.variables.iter().map(| (_, v)| {
         let name = v.unwrap_var();
         (name.to_string(), proj.next_var(name))
     }).collect()
@@ -155,7 +156,12 @@ impl<'src> Parser<'src> {
                 Stmt::CallCustom(safe_str(proto.name()), args)
             }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
-                Stmt::BuiltinRuntimeCall(block.opcode.clone(), vec![])
+                let args = match proto {
+                    &[] => vec![],
+                    &[SType::Number] => vec![self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one())],
+                    _ => vec![UnknownExpr(format!("call({:?})", proto))],
+                };
+                Stmt::BuiltinRuntimeCall(block.opcode.clone(), args)
             } else {
                 Stmt::UnknownOpcode(block.opcode.clone())
             }
@@ -210,7 +216,7 @@ impl<'src> Parser<'src> {
                 let v = self.args_by_name.get(VALUE.unwrap_var()).unwrap();
                 Expr::GetArgument(*v)
             }),
-            _ => Expr::UnknownExpr(block.opcode.clone())
+            _ => Expr::BuiltinRuntimeGet(block.opcode.clone())  // TODO: should be checked
         }
     }
 

@@ -1,6 +1,7 @@
 use std::fs;
+use std::fs::create_dir_all;
 use compiler::ast::Project;
-use compiler::backend::rust::emit_rust;
+use compiler::backend::rust::{CARGO_TOML, emit_rust};
 use compiler::scratch_schema::parse;
 
 fn main() {
@@ -12,5 +13,8 @@ fn main() {
     println!();
     println!("{:?}", project);
     println!();
-    fs::write("target/out.rs", emit_rust(&project)).unwrap();
+
+    create_dir_all("target/scratch_out/src").unwrap();
+    fs::write("target/scratch_out/src/main.rs", emit_rust(&project)).unwrap();
+    fs::write("target/scratch_out/Cargo.toml", CARGO_TOML).unwrap();
 }

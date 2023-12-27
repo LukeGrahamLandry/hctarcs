@@ -170,6 +170,11 @@ impl Input {
             Input::NumUn { NUM } => NUM,
             Input::Val { VALUE } => VALUE,
             Input::Custom { custom_block } => custom_block,
+            Input::Named(vals) => if vals.len() == 1 {
+                    vals.iter().next().unwrap().1
+                } else {
+                    panic!("Expected single Operand in Input but found {:?}", self)
+                }
             _ => panic!("Expected single Operand in Input but found {:?}", self)
         }
     }

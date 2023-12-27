@@ -10,9 +10,20 @@ struct Emit<'src> {
     target: &'src Sprite
 }
 
+pub const CARGO_TOML: &str = r#"
+[package]
+name = "scratch_out"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runtime = { path = "../../runtime" }
+"#;
+
 const HEADER: &str = r#"//! This file is @generated from a Scratch project by github.com/LukeGrahamLandry/hctarcs
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
+#![allow(unused_parens)]
 use runtime::sprite::{{SpriteBase, Colour}};
 use runtime::builtins;
 fn main() {
@@ -113,9 +124,16 @@ impl<'src> Emit<'src> {
             Expr::GetGlobal(v) => format!("globals.{}", self.project.var_names[v.0]),
             Expr::GetArgument(v) => self.project.var_names[v.0].clone(),
             Expr::Literal(s) => {
-                // Brackets because I'm not sure of precedence for negative literals
-                format!("({}f64)", s)
-            },  // TODO: strings and bools
+                match s.as_str() {  // TODO: proper strings and bools. HACK!
+                    "true" => "1f64".to_string(),
+                    "false" => "0f64".to_string(),
+                    "Infinity" => "f64::INFINITY".to_string(),
+                    "-Infinity" => "f64::NEG_INFINITY".to_string(),
+                    "" => "0f64".to_string(),
+                    _ => format!("({}f64)", s)  // Brackets because I'm not sure of precedence for negative literals
+                }
+            },
+            Expr::BuiltinRuntimeGet(name) => format!("sprite.{}()", name),
             _ => format!("todo!(r#\"{:?}\"#)", expr)
         }
     }

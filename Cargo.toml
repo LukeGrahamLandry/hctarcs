@@ -4,6 +4,7 @@ members = [
     "runtime",
 ]
 exclude = [
-    "vendor/scratch-compiler",
+    "vendor/scratch-compiler",  # For tests
+    "target/scratch_out"  # Generated
 ]
 resolver = "2"

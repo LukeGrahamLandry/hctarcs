@@ -36,12 +36,12 @@ pub struct Node {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Stmt {
     // Control
-    Repeat(Vec<Stmt>),
+    // Repeat(Vec<Stmt>),
     RepeatTimes(Expr, Vec<Stmt>),
     If(Expr, Vec<Stmt>),
     IfElse(Expr, Vec<Stmt>, Vec<Stmt>),
-    WaitUntil(Expr),
-    RepeatUntil(Expr, Vec<Stmt>),
+    // WaitUntil(Expr),
+    // RepeatUntil(Expr, Vec<Stmt>),
     StopScript,
 
     // Variables
@@ -67,41 +67,10 @@ pub enum Expr {
     GetField(VarId),
     GetGlobal(VarId),
     GetArgument(VarId),
-    GetBuiltin(BuiltinVar),
+
+    BuiltinRuntimeGet(String),
     Literal(String),  // TODO: parse it in parser
     UnknownExpr(String)
-}
-
-// TODO: separate types?
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum BuiltinVar {
-    Timer,
-    Loudness,
-    Volume,
-
-    // Sprite Locals
-    Size,
-    XPos,
-    YPos,
-    Direction,
-
-    // Time
-    DaysSince2000,
-    Username,
-    Year,
-    Month,
-    Day,
-    WeekDay,
-    Hour,
-    Minute,
-    Second,
-
-    // Input
-    LastAnswer,
-    MouseX,
-    MouseY,
-    IsMouseDown,
-    IsKeyPressed(KeyId)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
@@ -116,9 +85,9 @@ pub enum BinOp {
     EQ,
     And,
     Or,
-    StrJoin,
-    StrLetterOf,
-    StrContains,
+    // StrJoin,
+    // StrLetterOf,
+    // StrContains,
     Random
 }
 
@@ -137,28 +106,28 @@ pub enum SType {
     Colour
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum RotStyle {
-    LeftRight,
-    DontRotate,
-    AllAround
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PosTarget {
-    Random,
-    Mouse,
-    Sprite(SpriteId),
-    Pos { x: f64, y: f64 },
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub enum RotStyle {
+//     LeftRight,
+//     DontRotate,
+//     AllAround
+// }
+//
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub enum PosTarget {
+//     Random,
+//     Mouse,
+//     Sprite(SpriteId),
+//     Pos { x: f64, y: f64 },
+// }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Trigger {
     FlagClicked,
-    KeyPressed(KeyId),
-    ThisSpriteClicked,
-    BackdropSwitch(BackdropId),
-    MessageReceive(EventId)
+    // KeyPressed(KeyId),
+    // ThisSpriteClicked,
+    // BackdropSwitch(BackdropId),
+    // MessageReceive(EventId)
 }
 
 macro_rules! int_key {
@@ -168,8 +137,8 @@ macro_rules! int_key {
     };
 }
 
-int_key!(BackdropId);
+// int_key!(BackdropId);
 int_key!(VarId);
-int_key!(EventId);
-int_key!(SpriteId);
-int_key!(KeyId);
+// int_key!(EventId);
+// int_key!(SpriteId);
+// int_key!(KeyId);
