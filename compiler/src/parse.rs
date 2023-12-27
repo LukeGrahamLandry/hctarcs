@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::{BinOp, Expr, Func, Proc, Project, Sprite, Stmt, Trigger, VarId};
+use crate::ast::{BinOp, Expr, Func, Proc, Project, Sprite, Stmt, SType, Trigger, VarId};
 use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject};
 
 macro_rules! unwrap_input {
@@ -22,26 +22,26 @@ macro_rules! unwrap_field {
 
 impl From<ScratchProject> for Project {
     fn from(value: ScratchProject) -> Self {
-        let mut proj = Project { targets: vec![] };
+        let mut proj = Project { targets: vec![], var_names: vec![] };
 
         let mut stages = value.targets.iter().filter(|t| t.isStage);
         let stage = stages.next().unwrap();
         assert!(stages.next().is_none());
-        let globals = get_vars(stage);
+        let globals = get_vars(&mut proj, stage);
 
         for target in &value.targets {
-            let fields = get_vars(target);
+            let fields = get_vars(&mut proj, target);
             proj.targets.push(Parser { target, fields, globals: &globals}.parse());
         }
 
         proj
-
     }
 }
 
-fn get_vars(target: &RawSprite) -> HashMap<String, VarId> {
+fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
     target.variables.iter().enumerate().map(|(i, (k, v))| {
-        (v.unwrap_var().to_string(), VarId(i))
+        let name = v.unwrap_var();
+        (name.to_string(), proj.next_var(name))
     }).collect()
 }
 
@@ -112,7 +112,11 @@ impl<'src> Parser<'src> {
                     }
                 }
             }),
-            _ => Stmt::UnknownOpcode(block.opcode.clone())
+            _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
+                Stmt::BuiltinRuntimeCall(block.opcode.clone(), vec![])
+            } else {
+                Stmt::UnknownOpcode(block.opcode.clone())
+            }
         }
     }
 
@@ -157,6 +161,17 @@ fn validate(target: &RawSprite) {
     }));
 }
 
+/// These correspond to function definitions in the runtime. The argument types must match!
+fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
+    match opcode {
+        "pen_setPenColorToColor" => Some(&[SType::Colour]),
+        "pen_setPenSizeTo" => Some(&[SType::Number]),
+        "pen_penUp" |
+        "pen_penDown" => Some(&[]),
+        _ => None
+    }
+}
+
 // TODO: Somehow ive gone down the wrong path and this sucks
 fn unwrap_arg_block<'src>(target: &'src RawSprite, block: &'src Block) -> &'src Block {
     target.blocks.get(block.inputs.as_ref().unwrap().unwrap_one().unwrap_block()).unwrap()
@@ -176,5 +191,12 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
         "operator_equals" => Some(EQ),
         "operator_mathop" => None,  // TODO: block.fields[OPERATOR] == function name
         _ => None
+    }
+}
+
+impl Project {
+    fn next_var(&mut self, name: &str) -> VarId {
+        self.var_names.push(name.replace(&['-', ' '], "_"));
+        VarId(self.var_names.len()-1)
     }
 }

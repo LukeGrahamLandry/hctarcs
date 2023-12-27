@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Project {
-    pub targets: Vec<Sprite>
+    pub targets: Vec<Sprite>,
+    pub var_names: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -68,6 +69,7 @@ pub enum Stmt {
     SetField(VarId, Expr),
     SetGlobal(VarId, Expr),
 
+    BuiltinRuntimeCall(String, Vec<Expr>),
     UnknownOpcode(String)
 }
 
@@ -153,6 +155,15 @@ pub enum UnOp {
     Ln,
     PowE,
     Pow10
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SType {
+    Integer,
+    Number,
+    String,
+    Boolean,
+    Colour
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

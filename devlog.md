@@ -11,7 +11,18 @@ Does `stop this script` mean
 - C) stop this thread (all the way up the stack to the initial trigger)
 
 TODO: the lisp compiler doesn't put global variables on the stage. Importing to scratch and exporting puts them tho. 
+TODO: default values
 
+Maybe it was a dumb idea to try to parse out every opcode into an ast node because most are just going to be calling 
+a function in the runtime. So there would be a lot of redundant dispatching logic. Instead, I could just define 
+the prototype each expects, parse the argument types in one place, and define functions with the right names in the runtime. 
+I think I still want control, variable, and expression blocks to have their own nodes, so I can try to emit sane looking code. 
+But things like pen, looks, sounds, motion are probably best expressed as a function call anyway. 
+
+TODO: 
+  - How to represent which builtins are await points?
+  - Is everything a method on Sprite? 
+  - How to represent inheriting the base sprite behaviour? 
 
 ## Parsing Ast (Dec 26)
 
