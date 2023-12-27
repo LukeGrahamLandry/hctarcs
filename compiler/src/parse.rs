@@ -75,12 +75,16 @@ impl<'src> Parser<'src> {
             let proto = unwrap_arg_block(self.target, block);
             assert_eq!(proto.opcode, "procedures_prototype");
             procedures.push(Proc {
+                name: safe_str(proto.mutation.as_ref().unwrap().name()),
                 body: self.parse_body(block.next.as_deref()),
             });
         }
+
         Sprite {
             functions,
             procedures,
+            fields: self.fields.iter().map(|(_, v)| *v).collect(),
+            name: self.target.name.clone()
         }
     }
 
@@ -194,9 +198,13 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
     }
 }
 
+pub fn safe_str(name: &str) -> String {
+    name.replace(&['-', ' ', '.'], "_")
+}
+
 impl Project {
     fn next_var(&mut self, name: &str) -> VarId {
-        self.var_names.push(name.replace(&['-', ' '], "_"));
+        self.var_names.push(safe_str(name));
         VarId(self.var_names.len()-1)
     }
 }

@@ -9,19 +9,22 @@ pub struct Project {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Sprite {
     pub functions: Vec<Func>,
-    pub procedures: Vec<Proc>
+    pub procedures: Vec<Proc>,
+    pub fields: Vec<VarId>,
+    pub name: String,
 }
 
 /// A stack of scratch blocks with a trigger
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Func {
     pub start: Trigger,
-    pub body: Vec<Stmt>
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Proc {
-    pub body: Vec<Stmt>
+    pub name: String,
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -157,7 +160,7 @@ pub enum UnOp {
     Pow10
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub enum SType {
     Integer,
     Number,

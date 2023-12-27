@@ -1,5 +1,6 @@
 use std::fs;
 use compiler::ast::Project;
+use compiler::backend::rust::emit_rust;
 use compiler::scratch_schema::parse;
 
 fn main() {
@@ -10,4 +11,6 @@ fn main() {
     let project: Project = project.into();
     println!();
     println!("{:?}", project);
+    println!();
+    fs::write("target/out.rs", emit_rust(&project)).unwrap();
 }

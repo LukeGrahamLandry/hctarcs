@@ -24,7 +24,26 @@ pub struct Block {
     pub next: Option<String>,
     pub parent: Option<String>,
     pub inputs: Option<Input>,
-    pub fields: Option<Field>
+    pub fields: Option<Field>,
+    pub mutation: Option<Mutation>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Mutation {
+    // TODO: how do i deal with nested json? These are lists of strings.
+    pub argumentdefaults: Option<String>,
+    pub argumentids: String,
+    pub argumentnames: Option<String>,
+    pub warp: BoolOrString,  // TODO: ffs
+
+    pub proccode: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum BoolOrString {
+    B(bool),
+    S(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -149,6 +168,30 @@ impl Input {
             Input::Operands { OPERAND1, OPERAND2 } => (OPERAND1, OPERAND2),
             _ => panic!("Expected single Operand in Input but found {:?}", self)
         }
+    }
+}
+
+impl Mutation {
+    pub fn arg_ids(&self) -> Vec<String> {
+        serde_json::from_str(&self.argumentids).unwrap()
+    }
+
+    pub fn arg_names(&self) -> Vec<String> {
+        serde_json::from_str(&self.argumentnames.as_ref().expect("Func Proto")).unwrap()
+    }
+
+    pub fn arg_defaults(&self) -> Vec<String> {
+        serde_json::from_str(&self.argumentdefaults.as_ref().expect("Func Proto")).unwrap()
+    }
+
+    pub fn arity(&self) -> usize {
+        self.proccode.chars().filter(|c| *c == '%').count()
+    }
+
+    pub fn name(&self) -> &str {  // TODO: kinda hacky, chops off the %d terms
+        let s = &self.proccode.as_str()[0..self.proccode.len()-(self.arity()*3)];
+        assert_eq!(s.chars().filter(|c| *c == '%').count(), 0);
+        s
     }
 }
 
