@@ -25,6 +25,7 @@ pub struct Func {
 pub struct Proc {
     pub name: String,
     pub body: Vec<Stmt>,
+    pub args: Vec<VarId>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -34,45 +35,22 @@ pub struct Node {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Stmt {
-    // Motion
-    MoveSteps(f64),
-    TurnLeftDeg(f64),
-    TurnRightDeg(f64),
-    /// Goto or GlideTo
-    GoTo(Duration, PosTarget),
-    PointAt(PosTarget),
-    PointDeg(f64),
-    IfEdgeBounce,
-    SetRotStyle(RotStyle),
-
-    // Looks
-    Say(Duration, String),
-    Think(Duration, String),
-    SetVisible(bool),
-
-    // Events
-    MessageSend(EventId),
-    MessageSendWait(EventId),
-
     // Control
-    DeleteThisClone,
-    WaitSecs(f64),
     Repeat(Vec<Stmt>),
-    RepeatTimes(usize, Vec<Stmt>),
+    RepeatTimes(Expr, Vec<Stmt>),
     If(Expr, Vec<Stmt>),
     IfElse(Expr, Vec<Stmt>, Vec<Stmt>),
     WaitUntil(Expr),
     RepeatUntil(Expr, Vec<Stmt>),
-
-    // Sensing
-    AskAndWait(String),
-    SetDraggable(bool),
+    StopScript,
 
     // Variables
     SetField(VarId, Expr),
     SetGlobal(VarId, Expr),
 
+    // Other
     BuiltinRuntimeCall(String, Vec<Expr>),
+    CallCustom(String, Vec<Expr>),  // TODO: func name should be a VarId
     UnknownOpcode(String)
 }
 
@@ -85,9 +63,10 @@ pub enum Duration {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Expr {
     Bin(BinOp, Box<Expr>, Box<Expr>),
-    Un(BinOp, Box<Expr>),
+    Un(UnOp, Box<Expr>),
     GetField(VarId),
     GetGlobal(VarId),
+    GetArgument(VarId),
     GetBuiltin(BuiltinVar),
     Literal(String),  // TODO: parse it in parser
     UnknownExpr(String)
@@ -125,7 +104,7 @@ pub enum BuiltinVar {
     IsKeyPressed(KeyId)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum BinOp {
     Add,
     Sub,
@@ -139,25 +118,14 @@ pub enum BinOp {
     Or,
     StrJoin,
     StrLetterOf,
-    StrContains
+    StrContains,
+    Random
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UnOp {
     Not,
-    Round,
-    Abs,
-    Floor,
-    Ceil,
-    Sqrt,
-    Sin,
-    Cos,
-    Tan,
-    Asin,
-    Acos,
-    Ln,
-    PowE,
-    Pow10
+    SuffixCall(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]

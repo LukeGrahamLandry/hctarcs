@@ -1,6 +1,6 @@
 
 
-## Variables
+## Variables & Emit Rust (Dec 27)
 
 - argument values are immutable in the body, no local variables
 - variables are either global or instance fields on a sprite 
@@ -12,6 +12,7 @@ Does `stop this script` mean
 
 TODO: the lisp compiler doesn't put global variables on the stage. Importing to scratch and exporting puts them tho. 
 TODO: default values
+TODO: check for variable name conflicts 
 
 Maybe it was a dumb idea to try to parse out every opcode into an ast node because most are just going to be calling 
 a function in the runtime. So there would be a lot of redundant dispatching logic. Instead, I could just define 
@@ -23,6 +24,18 @@ TODO:
   - How to represent which builtins are await points?
   - Is everything a method on Sprite? 
   - How to represent inheriting the base sprite behaviour? 
+
+Very nice to just emit unknown stuff as a `todo!(<src>)` so I can see progress while working on it. 
+
+I'm making custom blocks be a method on a struct that takes the sprite data and the globals as well as whatever arguments. 
+That's a bit clunky. 
+
+Got rid of unop ast nodes for math functions, now just have a string for suffix method call. 
+
+Annoying that argument_reporter_string_number only has readable name and procedures_call only has id. 
+Actually it doesn't matter because they're ordered, nvm.
+
+TODO: type inference for string/num/bool variables. no bool variables but could recognise patterns like a string that is always true/false or number 1/0 always compared. 
 
 ## Parsing Ast (Dec 26)
 

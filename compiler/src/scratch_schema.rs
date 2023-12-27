@@ -70,6 +70,10 @@ pub enum Input {
         CONDITION: Operand,
         SUBSTACK: Operand
     },
+    ForLoop {
+        TIMES: Operand,
+        SUBSTACK: Operand
+    },
     Val {  // variable set
         VALUE: Operand,
     },
@@ -142,12 +146,20 @@ impl Operand {
     }
 
     pub fn unwrap_var(&self) -> &str {
+        match self.opt_var() {
+            Some(s) => s,
+            None => panic!("Failed to unwrap operand var {self:?}"),
+        }
+    }
+
+    pub fn opt_var(&self) -> Option<&str> {
         match self {
-            Operand::Var(s, _) => s,
-            Operand::ArgName(s, _) => s,
-            Operand::VarF(s, _) => s,
-            Operand::VarNum(s, _) => s,
-            _ => panic!("Failed to unwrap operand var {self:?}"),
+            Operand::Var(s, _) |
+            Operand::ArgName(s, _) |
+            Operand::VarF(s, _) |
+            Operand::VarNum(s, _) |
+            Operand::ArgRef(_, (_, s, _), _) => Some(s),
+            _ => None,
         }
     }
 }
@@ -166,7 +178,32 @@ impl Input {
         match self {
             Input::NumBin { NUM1, NUM2 } => (NUM1, NUM2),
             Input::Operands { OPERAND1, OPERAND2 } => (OPERAND1, OPERAND2),
-            _ => panic!("Expected single Operand in Input but found {:?}", self)
+            Input::Range { FROM, TO } => (FROM, TO),
+            _ => panic!("Expected two Operand in Input but found {:?}", self)
+        }
+    }
+}
+
+pub enum StopOp {
+    ThisScript
+}
+
+impl Field {
+    // TODO: damn this sucks, can i offload some to serde?
+    pub fn unwrap_stop(&self) -> StopOp {
+        match self {
+            Field::Stop { STOP_OPTION } => {
+                match STOP_OPTION {
+                    Operand::Var(name, _) => {
+                        match name.as_str() {
+                            "this script" => StopOp::ThisScript,
+                            _ => todo!("Unknown StopOp {name}"),
+                        }
+                    }
+                    _ => panic!("Expected Var")
+                }
+            }
+            _ => panic!("Expected Stop found {:?}", self)
         }
     }
 }

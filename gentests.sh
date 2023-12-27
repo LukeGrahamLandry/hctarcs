@@ -9,3 +9,4 @@ yes | unzip target/linrays.sb3 -d target/linrays
 python -m json.tool target/linrays/project.json > temp
 cat temp > target/linrays/project.json
 rm temp
+# TODO: broken implicit variables, needs round trip through website

@@ -1,6 +1,8 @@
+//! Converting a structure from scratch_schema to an AST.
+
 use std::collections::HashMap;
-use crate::ast::{BinOp, Expr, Func, Proc, Project, Sprite, Stmt, SType, Trigger, VarId};
-use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject};
+use crate::ast::{BinOp, Expr, Func, Proc, Project, Sprite, Stmt, SType, Trigger, UnOp, VarId};
+use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject, StopOp};
 
 macro_rules! unwrap_input {
     ($block:ident, $pattern:pat => $body:block) => {
@@ -31,7 +33,8 @@ impl From<ScratchProject> for Project {
 
         for target in &value.targets {
             let fields = get_vars(&mut proj, target);
-            proj.targets.push(Parser { target, fields, globals: &globals}.parse());
+            let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new() }.parse();
+            proj.targets.push(result);
         }
 
         proj
@@ -46,9 +49,11 @@ fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
 }
 
 struct Parser<'src> {
+    project: &'src mut Project,
     target: &'src RawSprite,
     fields: HashMap<String, VarId>,
     globals: &'src HashMap<String, VarId>,
+    args_by_name: HashMap<String, VarId>,
 }
 
 impl<'src> Parser<'src> {
@@ -74,10 +79,16 @@ impl<'src> Parser<'src> {
             assert!(matches!(block.inputs, Some(Input::Custom { .. })));
             let proto = unwrap_arg_block(self.target, block);
             assert_eq!(proto.opcode, "procedures_prototype");
+            let proto = proto.mutation.as_ref().unwrap();
+            // TODO: arg names are not globally unique
+            let args: Vec<_> = proto.arg_names().iter().map(|n| self.project.next_var(n)).collect();
+            self.args_by_name = proto.arg_names().iter().zip(args.iter()).map(|(k, v)| (k.clone(), *v)).collect();
             procedures.push(Proc {
-                name: safe_str(proto.mutation.as_ref().unwrap().name()),
+                name: safe_str(proto.name()),
                 body: self.parse_body(block.next.as_deref()),
+                args,
             });
+            self.args_by_name.clear();
         }
 
         Sprite {
@@ -106,6 +117,14 @@ impl<'src> Parser<'src> {
             "control_if" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
                 Stmt::If(self.parse_op_expr(CONDITION), self.parse_body(Some(SUBSTACK.unwrap_block())))
             }),
+            "control_repeat" => unwrap_input!(block, Input::ForLoop { TIMES, SUBSTACK } => {
+                Stmt::RepeatTimes(self.parse_op_expr(TIMES), self.parse_body(Some(SUBSTACK.unwrap_block())))
+            }),
+            "control_stop" => {
+                match block.fields.as_ref().unwrap().unwrap_stop() {
+                    StopOp::ThisScript => Stmt::StopScript
+                }
+            },
             "data_setvariableto" => unwrap_field!(block, Field::Var { VARIABLE } => {
                 let value = self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one());
                 match self.fields.get(VARIABLE.unwrap_var()) {
@@ -115,6 +134,25 @@ impl<'src> Parser<'src> {
                         Stmt::SetGlobal(*v, value)
                     }
                 }
+            }),
+            "data_changevariableby" => unwrap_field!(block, Field::Var { VARIABLE } => {  // TODO: this could have a new ast node and use prettier +=
+                let value = self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one());
+                match self.fields.get(VARIABLE.unwrap_var()) {
+                    Some(v) => Stmt::SetField(*v, Expr::Bin(BinOp::Add, Box::new(Expr::GetField(*v)), Box::new(value))),
+                    None => {
+                        let v = self.globals.get(VARIABLE.unwrap_var()).unwrap();
+                        Stmt::SetGlobal(*v, Expr::Bin(BinOp::Add, Box::new(Expr::GetGlobal(*v)), Box::new(value)))
+                    }
+                }
+            }),
+            "procedures_call" => unwrap_input!(block, Input::Named(args) => {
+                let proto = block.mutation.as_ref().unwrap();
+                let args = proto.arg_ids().iter()
+                    .map(|id| args.get(id).unwrap())
+                    .map(|o| self.parse_op_expr(o))
+                    .collect();
+
+                Stmt::CallCustom(safe_str(proto.name()), args)
             }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 Stmt::BuiltinRuntimeCall(block.opcode.clone(), vec![])
@@ -129,8 +167,16 @@ impl<'src> Parser<'src> {
             return Expr::Literal(constant.to_string());
         }
 
-        if let Operand::ArgRef(..) = block {
-            return Expr::UnknownExpr(format!("{:?}", block));  // TODO
+        if let Some(v) = block.opt_var() {
+            return match self.fields.get(v) {
+                Some(v) => Expr::GetField(*v),
+                None => {
+                    match self.globals.get(v) {
+                        Some(v) => Expr::GetGlobal(*v),
+                        _ => panic!("Undefined variable {}", v),
+                    }
+                }
+            }
         }
 
         let block = self.target.blocks.get(block.unwrap_block()).unwrap();
@@ -143,7 +189,27 @@ impl<'src> Parser<'src> {
             return Expr::Bin(op, Box::from(self.parse_op_expr(lhs)), Box::from(self.parse_op_expr(rhs)))
         }
 
-        match &block.opcode {
+        match block.opcode.as_str() {
+            "operator_mathop" => unwrap_field!(block, Field::Op { OPERATOR } => {
+                if let Operand::Var(name, _) = OPERATOR {
+                    let op = match name.as_str() {
+                        "ceiling" => "ceil",
+                        "log" => "log10", // TODO: make sure right base
+                        "e ^" => "exp",
+                        "10 ^" => todo!("10 ^ not suffix"),
+                        _ => name,  // TODO: don't assume valid input
+                    };
+                    let op = UnOp::SuffixCall(op.to_string());  // TODO: sad allocation noises
+                    let e = Box::new(self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
+                    Expr::Un(op, e)
+                } else {
+                    panic!("Expected operator_mathop[OPERATOR]==Var(..) found {:?}", OPERATOR)
+                }
+            }),
+            "argument_reporter_string_number" => unwrap_field!(block, Field::Val { VALUE } => {
+                let v = self.args_by_name.get(VALUE.unwrap_var()).unwrap();
+                Expr::GetArgument(*v)
+            }),
             _ => Expr::UnknownExpr(block.opcode.clone())
         }
     }
@@ -169,7 +235,11 @@ fn validate(target: &RawSprite) {
 fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
     match opcode {
         "pen_setPenColorToColor" => Some(&[SType::Colour]),
-        "pen_setPenSizeTo" => Some(&[SType::Number]),
+        "pen_setPenSizeTo" |
+        "motion_changexby" |
+        "motion_changeyby"|
+        "motion_setx"|
+        "motion_sety" => Some(&[SType::Number]),
         "pen_penUp" |
         "pen_penDown" => Some(&[]),
         _ => None
@@ -193,6 +263,7 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
         "operator_gt" => Some(GT),
         "operator_lt" => Some(LT),
         "operator_equals" => Some(EQ),
+        "operator_random" => Some(Random),
         "operator_mathop" => None,  // TODO: block.fields[OPERATOR] == function name
         _ => None
     }

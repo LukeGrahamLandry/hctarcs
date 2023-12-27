@@ -18,4 +18,31 @@ impl SpriteBase {
     pub fn pen_penDown(&mut self) {
         self.pen.down = true;
     }
+
+    pub fn motion_changexby(&mut self, dx: f64) {
+        self.x += dx;
+    }
+
+    pub fn motion_changeyby(&mut self, dy: f64) {
+        self.y += dy;
+    }
+
+    pub fn motion_setx(&mut self, x: f64) {
+        self.x = x;
+    }
+
+    pub fn motion_sety(&mut self, y: f64) {
+        self.y = y;
+    }
+}
+
+// TODO: depend on rand
+pub fn dyn_rand(min: f64, max: f64) -> f64 {
+    if min.round() == min && max.round() == max {
+        // If both sides are whole numbers, result is a whole number.
+        // TODO: make my compiler constant fold this branch
+        min
+    } else {
+        min
+    }
 }
