@@ -1,5 +1,5 @@
 use crate::ast::{Func, Project, Sprite, Stmt, Trigger};
-use crate::scratch_schema::{Block, ScratchProject};
+use crate::scratch_schema::{Block, Field, RawSprite, ScratchProject};
 
 impl From<ScratchProject> for Project {
     fn from(value: ScratchProject) -> Self {
@@ -16,8 +16,10 @@ impl Parser {
         let mut proj = Project { targets: vec![] };
 
         for target in &value.targets {
+            validate(target);
+
             println!("Parse Sprite {}", target.name);
-            let entry = target.blocks.iter().filter(|(k, v)| v.opcode.starts_with("event_"));
+            let entry = target.blocks.iter().filter(|(_, v)| v.opcode.starts_with("event_"));
             let mut functions = vec![];
             for (name, block) in entry {
                 println!("Parse Func {name}");
@@ -58,4 +60,13 @@ impl Parser {
     fn new() -> Self {
         Parser {}
     }
+}
+
+fn validate(target: &RawSprite) {
+    assert!(!target.blocks.values().any(|v| {
+        match &v.fields {
+            Some(Field::Named(m)) => !m.is_empty(),
+            _ => false
+        }
+    }));
 }

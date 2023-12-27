@@ -3,6 +3,8 @@
 
 So it has map of blocks with next pointers. Find ones with entry point opcodes and then follow the linked list to build up the stack.
 `inputs` is a map of named arguments. Math has `NUM1` and `NUM2`, logical has `OPERAND1` and `OPERAND2`, etc.
+It would be very nice if I could express this to serde instead of manually writing a bunch of code that pulls it out of the map. 
+- https://serde.rs/enum-representations.html#untagged
 
 Then for custom blocks:
 - procedures_definition: 
@@ -36,8 +38,9 @@ Can use this for testing my thing without needing to write everything in the gui
 This leads to the idea of the most indirect lisp compiler: take your lisp and compile it to a scratch project 
 with their thing and then compile that scratch project to rust and then compile that. 
 
-They also have a native backend using cranelift (but no frontend accepting sb3 that I can see). 
-It looks like it doesn't have graphics or concurrent sprites yet tho. 
+They also have a native backend using cranelift (but no frontend accepting sb3 that I can see).
+It looks like it doesn't have graphics or concurrent sprites yet tho.
+Should see if I can hook that in with my runtime thing if I ever get that far. 
 
 ## Ast Chore (Dec 25)
 
@@ -51,8 +54,12 @@ There's pretty much the normal programming language structure.
 
 There are some kinda interesting representation choices. 
 - Should custom blocks be inlined? I guess not, it would be very cool if the generated code was readable. 
+  Can you do recursion? 
 - Distinguish between time builtins, pos/dir, local properties, globals?
 - Are math functions unary operators? Why is `not` more special than `sin`?
+- Should the AST match the blocks or should await points be represented in some special way? 
+  (places where its split across frames, like glide animation)
+  Maybe this introduces another form of IR.   
 
 ## New Beginnings (Dec 25)
 
