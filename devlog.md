@@ -1,5 +1,19 @@
 
-## Parsing Ast
+
+## Variables
+
+- argument values are immutable in the body, no local variables
+- variables are either global or instance fields on a sprite 
+
+Does `stop this script` mean 
+- A) break from current scope 
+- B) return from the current custom block 
+- C) stop this thread (all the way up the stack to the initial trigger)
+
+TODO: the lisp compiler doesn't put global variables on the stage. Importing to scratch and exporting puts them tho. 
+
+
+## Parsing Ast (Dec 26)
 
 So it has map of blocks with next pointers. Find ones with entry point opcodes and then follow the linked list to build up the stack.
 `inputs` is a map of named arguments. Math has `NUM1` and `NUM2`, logical has `OPERAND1` and `OPERAND2`, etc.
@@ -20,10 +34,17 @@ Then for custom blocks:
     - `argumentids` match input keys
     - `argumentnames` match `fields[0]` of corresponding argument_reporter_string_number
     - `proccode` gives a string for the function name which I think is how procedures_call references it instead of by block id 
+      - Arguments have types, `%b` for bool and `%s` for number/string (so some inference needed)
 - procedures_call
   - another `mutation` field 
 - argument_reporter_string_number: 
   - `fields[VALUE]` is name of the argument
+
+Rust macros can't expand to one branch of a match??? And the error message for that is 
+`macro expansion ignores token `=>` and any following. Macro <NAME> is likely invalid in pattern context`,
+which is true I guess but did not make it obvious to me that what I wanted was impossible rather than just me making a syntax mistake. 
+I guess a macro doesn't expand to a stream of tokens, it has to expand to whole ast nodes? 
+But like ehhhh why, sad day. 
 
 ## Indirect Lisp Idea (Dec 26)
 

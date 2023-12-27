@@ -7,13 +7,19 @@ pub struct Project {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Sprite {
-    pub functions: Vec<Func>
+    pub functions: Vec<Func>,
+    pub procedures: Vec<Proc>
 }
 
 /// A stack of scratch blocks with a trigger
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Func {
     pub start: Trigger,
+    pub body: Vec<Stmt>
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Proc {
     pub body: Vec<Stmt>
 }
 
@@ -46,9 +52,21 @@ pub enum Stmt {
 
     // Control
     DeleteThisClone,
+    WaitSecs(f64),
+    Repeat(Vec<Stmt>),
+    RepeatTimes(usize, Vec<Stmt>),
+    If(Expr, Vec<Stmt>),
+    IfElse(Expr, Vec<Stmt>, Vec<Stmt>),
+    WaitUntil(Expr),
+    RepeatUntil(Expr, Vec<Stmt>),
+
     // Sensing
     AskAndWait(String),
     SetDraggable(bool),
+
+    // Variables
+    SetField(VarId, Expr),
+    SetGlobal(VarId, Expr),
 
     UnknownOpcode(String)
 }
@@ -63,8 +81,11 @@ pub enum Duration {
 pub enum Expr {
     Bin(BinOp, Box<Expr>, Box<Expr>),
     Un(BinOp, Box<Expr>),
-    GetVar(VarId),
-    GetBuiltin(BuiltinVar)
+    GetField(VarId),
+    GetGlobal(VarId),
+    GetBuiltin(BuiltinVar),
+    Literal(String),  // TODO: parse it in parser
+    UnknownExpr(String)
 }
 
 // TODO: separate types?
@@ -161,7 +182,7 @@ pub enum Trigger {
 macro_rules! int_key {
     ($name:ident) => {
         #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
-        pub struct $name(usize);
+        pub struct $name(pub usize);
     };
 }
 

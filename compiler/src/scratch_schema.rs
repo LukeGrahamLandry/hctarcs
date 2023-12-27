@@ -3,7 +3,7 @@
 #![allow(non_snake_case)]
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Result, Value};
+use serde_json::Result;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScratchProject {
@@ -14,7 +14,7 @@ pub struct ScratchProject {
 pub struct RawSprite {
     pub isStage: bool,
     pub name: String,
-    pub variables: Map<String, Value>,
+    pub variables: HashMap<String, Operand>,
     pub blocks: HashMap<String, Block>
 }
 
@@ -41,8 +41,15 @@ pub enum Input {
         OPERAND1: Operand,
         OPERAND2: Operand,
     },
-    Cond {  // if
+    // Order matters because Branch2 extends Branch1!
+    Branch2 {
         CONDITION: Operand,
+        SUBSTACK: Operand,
+        SUBSTACK2: Operand,
+    },
+    Branch1 {
+        CONDITION: Operand,
+        SUBSTACK: Operand
     },
     Val {  // variable set
         VALUE: Operand,
@@ -90,6 +97,8 @@ pub enum Operand {
     ArgRef(usize, (usize, String, String), (usize, String)),
     Constant(usize, (usize, String)),
     ArgName(String, String),
+    VarNum(String, usize),
+    VarF(String, f64),
     Var(String, Option<()>),
     // Unknown(Value)
 }
@@ -98,11 +107,11 @@ pub enum Operand {
 pub struct ArgRef(usize, String, String);
 
 impl Operand {
-    pub fn block(&self) -> Option<&str> {
+    pub fn unwrap_block(&self) -> &str {
         match self {
-            Operand::ExprRef(_, s) => Some(s.as_str()),
-            Operand::ExprRefExtra(_, s, _) => Some(s.as_str()),
-            _ => None
+            Operand::ExprRef(_, s) => s.as_str(),
+            Operand::ExprRefExtra(_, s, _) => s.as_str(),
+            _ => panic!("Failed to unwrap operand block {self:?}"),
         }
     }
 
@@ -110,6 +119,35 @@ impl Operand {
         match self {
             Operand::Constant(_, (_, s)) => Some(s.as_ref()),
             _ => None
+        }
+    }
+
+    pub fn unwrap_var(&self) -> &str {
+        match self {
+            Operand::Var(s, _) => s,
+            Operand::ArgName(s, _) => s,
+            Operand::VarF(s, _) => s,
+            Operand::VarNum(s, _) => s,
+            _ => panic!("Failed to unwrap operand var {self:?}"),
+        }
+    }
+}
+
+impl Input {
+    pub fn unwrap_one(&self) -> &Operand {
+        match self {
+            Input::NumUn { NUM } => NUM,
+            Input::Val { VALUE } => VALUE,
+            Input::Custom { custom_block } => custom_block,
+            _ => panic!("Expected single Operand in Input but found {:?}", self)
+        }
+    }
+
+    pub fn unwrap_pair(&self) -> (&Operand, &Operand) {
+        match self {
+            Input::NumBin { NUM1, NUM2 } => (NUM1, NUM2),
+            Input::Operands { OPERAND1, OPERAND2 } => (OPERAND1, OPERAND2),
+            _ => panic!("Expected single Operand in Input but found {:?}", self)
         }
     }
 }
