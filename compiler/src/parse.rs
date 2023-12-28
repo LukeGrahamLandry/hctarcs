@@ -165,6 +165,7 @@ impl<'src> Parser<'src> {
                         let (a, b) = (self.parse_op_expr(a), self.parse_op_expr(b));
                         vec![a, b]
                     }
+
                     _ => vec![UnknownExpr(format!("call({:?})", proto))],
                 };
                 Stmt::BuiltinRuntimeCall(block.opcode.clone(), args)
@@ -205,13 +206,17 @@ impl<'src> Parser<'src> {
             "operator_mathop" => unwrap_field!(block, Field::Op { OPERATOR } => {
                 if let Operand::Var(name, _) = OPERATOR {
                     let op = match name.as_str() {
-                        "ceiling" => "ceil",
-                        "log" => "log10", // TODO: make sure right base
-                        "e ^" => "exp",
+                        "ceiling" => "ceil".to_string(),
+                        "log" => "log10".to_string(), // TODO: make sure right base
+                        "e ^" => "exp".to_string(),
                         "10 ^" => todo!("10 ^ not suffix"),
-                        _ => name,  // TODO: don't assume valid input
+                        "sin" | "cos" | "tan"
+                            => format!("to_degrees().{}", name),
+                        "asin" | "acos" | "atan"
+                            => format!("{}().to_degrees", name),
+                        _ => name.to_string(),  // TODO: don't assume valid input
                     };
-                    let op = UnOp::SuffixCall(op.to_string());  // TODO: sad allocation noises
+                    let op = UnOp::SuffixCall(op);  // TODO: sad allocation noises
                     let e = Box::new(self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
                     Expr::Un(op, e)
                 } else {

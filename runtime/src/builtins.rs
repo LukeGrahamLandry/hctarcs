@@ -1,4 +1,7 @@
-#![allow(non_snake_case)]  // TODO: compiler could fix the names for me
+#![allow(non_snake_case)]
+
+use rand::Rng;
+// TODO: compiler could fix the names for me
 use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
@@ -79,11 +82,13 @@ impl SpriteBase {
 
 // TODO: depend on rand
 pub fn dyn_rand(min: f64, max: f64) -> f64 {
+    // TODO: This is probably slow if it doesn't notice it doesn't need to clone the Rc.
+    let mut rng = rand::thread_rng();
     if min.round() == min && max.round() == max {
         // If both sides are whole numbers, result is a whole number.
         // TODO: make my compiler constant fold this branch
-        min
+        rng.gen_range((min as isize)..(max as isize)) as f64
     } else {
-        min
+        rng.gen_range(min..max)
     }
 }

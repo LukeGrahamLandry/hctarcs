@@ -48,10 +48,12 @@ impl<Msg: Clone + Copy + Default, Globals> World<Msg, Globals> {
         let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
         let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
-        event_loop.set_control_flow(ControlFlow::Poll);
+        event_loop.set_control_flow(ControlFlow::Wait);  // Poll
         event_loop.run(|event, elwt| {
             match event {
-                Event::AboutToWait => window.request_redraw(),
+                Event::AboutToWait => {
+                    // window.request_redraw()
+                },
 
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
@@ -75,12 +77,15 @@ impl<Msg: Clone + Copy + Default, Globals> World<Msg, Globals> {
 
                     let mut buffer = surface.buffer_mut().unwrap();
                     for line in &lines {
-                        let x = (line.start.0 + HALF_SCREEN_WIDTH) as usize;
-                        let y = (HALF_SCREEN_HEIGHT - line.start.1) as usize;
-                        let i = x + (y * width as usize);
-                        if i > 0 && i < buffer.len() {
-                            buffer[i] = line.colour.0;
-                        }
+                        // let len_sq = (line.start.0-line.end.0).powi(2) + (line.start.1-line.end.1).powi(2);
+                        // if len_sq <= 1.0 {
+                            let x = (line.start.0 + HALF_SCREEN_WIDTH) as usize;
+                            let y = (HALF_SCREEN_HEIGHT - line.start.1) as usize;
+                            let i = x + (y * width as usize);
+                            if i > 0 && i < buffer.len() {
+                                buffer[i] = line.colour.0;
+                            }
+                        // }
                     }
                     buffer.present().unwrap();
                 }

@@ -17,9 +17,18 @@ Well, that's an extra 480 lines, so it's just counting the reset every row.
 Start with softbuffer as the renderer. Can cheat because this is (i assume) using lines to draw individual pixels. 
 wgpu changed a bunch of random stuff since last I used it. 
 
+Transform to right coordinate system
+Very close to right, some stuff is kinda upside down. Wrong trig units? 
+Not the man problem but kinda helped take a line off the sphere, but now it's slow!
+I was converting the output of `a<trig>` to degrees as well instead of the input 
+and fixing that didnt fix the upside down but did fix the slow so now its fast again.
+Which is pretty cool I think. llvm must know identities for the trig intrinsics?
+I feel the problem must be somewhere in dielectrics refraction. 
+- https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
 
 Once this works, next test is https://scratch.mit.edu/projects/647528063/editor/
-Needs broadcasts, lists, and costumes stamp. 
+Needs broadcasts, lists, and costumes stamp.
+Other complicated projects to try are the featured ones from https://turbowarp.org/
 
 ## Variables & Emit Rust (Dec 27)
 
