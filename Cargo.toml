@@ -8,3 +8,9 @@ exclude = [
     "target/scratch_out"  # Generated
 ]
 resolver = "2"
+
+[profile.release]
+lto = true
+strip = "debuginfo"
+panic = "abort"
+opt-level = "s"

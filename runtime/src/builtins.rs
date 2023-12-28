@@ -1,7 +1,8 @@
-#![allow(non_snake_case)]
+#![allow(non_snake_case)]  // TODO: compiler could fix the names for me
 
-use rand::Rng;
-// TODO: compiler could fix the names for me
+use rand::{Rng, SeedableRng};
+use rand::rngs::{StdRng, ThreadRng};
+use std::cell::RefCell;
 use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
@@ -80,15 +81,16 @@ impl SpriteBase {
     }
 }
 
-// TODO: depend on rand
+thread_local! {
+    pub static RNG: RefCell<StdRng> = RefCell::new(StdRng::from_rng(ThreadRng::default()).unwrap());
+}
+
 pub fn dyn_rand(min: f64, max: f64) -> f64 {
-    // TODO: This is probably slow if it doesn't notice it doesn't need to clone the Rc.
-    let mut rng = rand::thread_rng();
     if min.round() == min && max.round() == max {
         // If both sides are whole numbers, result is a whole number.
         // TODO: make my compiler constant fold this branch
-        rng.gen_range((min as isize)..(max as isize)) as f64
+        RNG.with(|rng| rng.borrow_mut().gen_range((min as isize)..(max as isize)) as f64)
     } else {
-        rng.gen_range(min..max)
+        RNG.with(|rng| rng.borrow_mut().gen_range(min..max))
     }
 }

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 use crate::ast::{BinOp, Expr, Project, Sprite, Stmt, Trigger, UnOp};
 
 pub fn emit_rust(project: &Project) -> String {
@@ -43,6 +44,12 @@ edition = "2021"
 
 [dependencies]
 runtime = { path = "../../runtime" }
+
+[profile.release]
+panic = "abort"
+strip = "debuginfo" # true
+# lto = true
+# codegen-units = 1
 "#;
 
 const HEADER: &str = r#"
@@ -50,6 +57,7 @@ const HEADER: &str = r#"
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(unused_parens)]
+#![allow(unused_variables)]
 use runtime::sprite::{SpriteBase, Sprite};
 use runtime::{builtins, World};
 "#;
@@ -145,7 +153,6 @@ impl Sprite<Msg, Stage> for {0} {{
                     BinOp::Sub => Some("-"),
                     BinOp::Mul => Some("*"),
                     BinOp::Div => Some("/"),
-                    BinOp::Mod => Some("%"),
                     BinOp::GT => Some(">"),
                     BinOp::LT => Some("<"),
                     BinOp::EQ => Some("=="),
@@ -165,7 +172,7 @@ impl Sprite<Msg, Stage> for {0} {{
             Expr::Un(op, e) => {
                 match op {
                     UnOp::Not => format!("(!{})", self.emit_expr(e)),
-                    UnOp::SuffixCall(name) => format!("{}.{name}()", self.emit_expr(e)),
+                    UnOp::SuffixCall(name) => format!("({}.{name}())", self.emit_expr(e)),
                 }
             }
             Expr::GetField(v) => format!("self.{}", self.project.var_names[v.0]),
@@ -178,7 +185,13 @@ impl Sprite<Msg, Stage> for {0} {{
                     "Infinity" => "f64::INFINITY".to_string(),
                     "-Infinity" => "f64::NEG_INFINITY".to_string(),
                     "" => "0f64".to_string(),
-                    _ => format!("({}f64)", s)  // Brackets because I'm not sure of precedence for negative literals
+                    _ => {
+                        match s.parse::<f64>() {
+                            Ok(v) => format!("({}f64)", v),
+                            Err(_) => format!("\"{}\"", s.escape_default()),
+                        }
+
+                    }  // Brackets because I'm not sure of precedence for negative literals
                 }
             },
             Expr::BuiltinRuntimeGet(name) => format!("sprite.{}()", name),

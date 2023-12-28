@@ -44,9 +44,9 @@ impl<Msg: Clone + Copy + Default, Globals> World<Msg, Globals> {
         let builder = WindowBuilder::new().with_title("hctarcs");
         let window = builder.build(&event_loop).unwrap();
         // window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
-        window.request_inner_size(Size::Physical(PhysicalSize::new(480, 360)));
-        let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-        let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+        let _ = window.request_inner_size(Size::Physical(PhysicalSize::new(480, 360)));
+        let context = softbuffer::Context::new(&window).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, &window).unwrap();
 
         event_loop.set_control_flow(ControlFlow::Wait);  // Poll
         event_loop.run(|event, elwt| {

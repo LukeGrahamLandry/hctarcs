@@ -32,11 +32,11 @@ pub struct Block {
 pub struct Mutation {
     // TODO: how do i deal with nested json? These are lists of strings.
     pub argumentdefaults: Option<String>,
-    pub argumentids: String,
+    pub argumentids: Option<String>,
     pub argumentnames: Option<String>,
-    pub warp: BoolOrString,  // TODO: ffs
+    pub warp: Option<BoolOrString>,  // TODO: ffs
 
-    pub proccode: String,
+    pub proccode: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -111,6 +111,9 @@ pub enum Field {
     Stop {
         STOP_OPTION: Operand
     },
+    Msg {
+        BROADCAST_OPTION: Operand,
+    },
     // TODO: How to match empty?
     Named(HashMap<String, Operand>),
 }
@@ -126,6 +129,9 @@ pub enum Operand {
     VarNum(String, usize),
     VarF(String, f64),
     Var(String, Option<()>),
+    TwoNames(usize, String, String),
+    Nothing(usize, Option<()>),
+    NNSS(usize, (usize, String, String)),
     // Unknown(Value)
 }
 
@@ -133,11 +139,12 @@ pub enum Operand {
 pub struct ArgRef(usize, String, String);
 
 impl Operand {
-    pub fn unwrap_block(&self) -> &str {
+    pub fn opt_block(&self) -> Option<&str> {
         match self {
-            Operand::ExprRef(_, s) => s.as_str(),
-            Operand::ExprRefExtra(_, s, _) => s.as_str(),
-            _ => panic!("Failed to unwrap operand block {self:?}"),
+            Operand::ExprRef(_, s) => Some(s.as_str()),
+            Operand::ExprRefExtra(_, s, _) => Some(s.as_str()),
+            Operand::Nothing(_, _) => None,
+            _ => panic!("Expected opt_block found {:?}, maybe could return None but should check", self),
         }
     }
 
@@ -162,6 +169,7 @@ impl Operand {
             Operand::VarF(s, _) |
             Operand::VarNum(s, _) |
             Operand::ArgRef(_, (_, s, _), _) => Some(s),
+            Operand::NNSS(_, (_, s, _)) => Some(s),
             _ => None,
         }
     }
@@ -195,7 +203,8 @@ impl Input {
 }
 
 pub enum StopOp {
-    ThisScript
+    ThisScript,
+    All,
 }
 
 impl Field {
@@ -207,7 +216,8 @@ impl Field {
                     Operand::Var(name, _) => {
                         match name.as_str() {
                             "this script" => StopOp::ThisScript,
-                            _ => todo!("Unknown StopOp {name}"),
+                            "all" => StopOp::All,
+                            _ => panic!("Expected StopOp found {name}"),
                         }
                     }
                     _ => panic!("Expected Var")
@@ -220,7 +230,7 @@ impl Field {
 
 impl Mutation {
     pub fn arg_ids(&self) -> Vec<String> {
-        serde_json::from_str(&self.argumentids).unwrap()
+        serde_json::from_str(&self.argumentids.as_ref().unwrap()).unwrap()
     }
 
     pub fn arg_names(&self) -> Vec<String> {
@@ -232,11 +242,11 @@ impl Mutation {
     }
 
     pub fn arity(&self) -> usize {
-        self.proccode.chars().filter(|c| *c == '%').count()
+        self.proccode.as_ref().unwrap().chars().filter(|c| *c == '%').count()
     }
 
     pub fn name(&self) -> &str {  // TODO: kinda hacky, chops off the %d terms
-        let s = &self.proccode.as_str()[0..self.proccode.len()-(self.arity()*3)];
+        let s = &self.proccode.as_ref().unwrap().as_str()[0..self.proccode.as_ref().unwrap().len()-(self.arity()*3)];
         assert_eq!(s.chars().filter(|c| *c == '%').count(), 0);
         s
     }

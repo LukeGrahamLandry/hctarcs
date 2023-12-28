@@ -1,4 +1,40 @@
 
+## contributing to the lisp one
+
+Implicit locals: 
+Procedure.variables has them and the cranelift backend defines them as real locals.   
+serialize_proc puts them in SerCtx.local_vars
+serialize_sprite (where instance vars are handled) doesn't put locals on the sprite or stage.
+Is there anything that checks that you always assign to a local before you read it? Otherwise, they're actually statics which is scary once sprites can clone. 
+
+Damn git submodules suck ass, apparently. I just wanna test my thing! 
+- https://stackoverflow.com/questions/20929336/git-submodule-add-a-git-directory-is-found-locally-issue
+
+## Ideas
+
+Next test I want is https://scratch.mit.edu/projects/647528063/editor/
+Needs broadcasts, lists, and costumes stamp.
+Other complicated projects to try are the featured ones from https://turbowarp.org/
+
+TODO: could have easy way to fetch project by id. 
+- https://api.scratch.mit.edu/projects/ID has a `project_token` field
+- https://projects.scratch.mit.edu/ID?token=TOKEN has the project.json file
+Idk why they have that split, both seem to be fine being fetched by curl. 
+
+TODO: implement some turbowarp extensions
+- function return values! https://docs.turbowarp.org/return
+
+Supporting wasm would be funny.
+Turbowarp's compiler/runtime is actually pretty big, so I might be able to make a lighter embed. 
+Canvas render backend is probably easier than a native one. 
+
+Pleasing that RustRover's profiler works because it's just a normal rust project in the end. 
+TODO: Generating random numbers is like ~2/3 of the Sprite::receive
+      And you can't put the rng anywhere cause of the mutability thing. Aaaaaarhg!
+
+Web UI where you can upload a .sb3 file, and it will spit out the rust code. 
+You'd still need the native rust compiler, but it would be a cool demo. 
+
 ## Rendering Pen (Dec 27)
 
 To start with, lets just collect all the lines it draws. 
@@ -26,10 +62,6 @@ Which is pretty cool I think. llvm must know identities for the trig intrinsics?
 I feel the problem must be somewhere in dielectrics refraction. 
 - https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
 
-Once this works, next test is https://scratch.mit.edu/projects/647528063/editor/
-Needs broadcasts, lists, and costumes stamp.
-Other complicated projects to try are the featured ones from https://turbowarp.org/
-
 ## Variables & Emit Rust (Dec 27)
 
 - argument values are immutable in the body, no local variables
@@ -40,7 +72,8 @@ Does `stop this script` mean
 - B) return from the current custom block 
 - C) stop this thread (all the way up the stack to the initial trigger)
 
-TODO: the lisp compiler doesn't put global variables on the stage. Importing to scratch and exporting puts them tho. 
+TODO: the lisp compiler doesn't declare local variables anywhere. Importing to scratch and exporting puts them on the stage as globals tho.  
+      
 TODO: default values
 TODO: check for variable name conflicts 
 

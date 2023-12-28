@@ -45,6 +45,7 @@ pub enum Stmt {
     // WaitUntil(Expr),
     // RepeatUntil(Expr, Vec<Stmt>),
     StopScript,
+    Exit,
 
     // Variables
     SetField(VarId, Expr),
@@ -81,7 +82,6 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
-    Mod,
     GT,
     LT,
     EQ,
@@ -126,6 +126,7 @@ pub enum SType {
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum Trigger {
     FlagClicked,
+    Message(String), // TODO: VarId ?
     // KeyPressed(KeyId),
     // ThisSpriteClicked,
     // BackdropSwitch(BackdropId),
@@ -143,6 +144,7 @@ impl Display for Trigger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             Trigger::FlagClicked => "FlagClicked".to_string(),
+            Trigger::Message(name) => format!("Msg_{}", name)
         })
     }
 }

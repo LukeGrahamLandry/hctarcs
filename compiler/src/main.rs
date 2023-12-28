@@ -5,16 +5,18 @@ use compiler::backend::rust::{CARGO_TOML, emit_rust};
 use compiler::scratch_schema::parse;
 
 fn main() {
-    // let raw = fs::read_to_string("/Users/luke/Documents/scratch.json").unwrap();
-    let raw = fs::read_to_string("target/linrays/project.json").unwrap();
+    compile("target/linrays", "target/scratch_out");
+    compile("target/tres", "target/scratch_out_tres");
+}
+
+fn compile(input: &str, output: &str) {
+    let raw = fs::read_to_string(format!("{input}/project.json")).unwrap();
     let project = parse(raw.as_str()).unwrap();
-    println!("{:?}", project);
     let project: Project = project.into();
     println!();
     println!("{:?}", project);
     println!();
-
-    create_dir_all("target/scratch_out/src").unwrap();
-    fs::write("target/scratch_out/src/main.rs", emit_rust(&project)).unwrap();
-    fs::write("target/scratch_out/Cargo.toml", CARGO_TOML).unwrap();
+    create_dir_all(format!("{output}/src")).unwrap();
+    fs::write(format!("{output}/src/main.rs"), emit_rust(&project)).unwrap();
+    fs::write(format!("{output}/Cargo.toml"), CARGO_TOML).unwrap();
 }

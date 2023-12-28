@@ -1,12 +1,25 @@
+echo "!! Make sure to git submodule update --init --recursive"
 cd vendor/scratch-compiler || exit
-cargo build
-cd ../linrays || exit
-echo "Building Ray Tracer..."
-../scratch-compiler/target/debug/scratch-compiler src/main.scratch
-mv project.sb3 ../../target/linrays.sb3
+cargo build --release
+cd ../.. || exit
+
+build_vendor() {
+  echo "=== Building $1 ==="
+  cd "vendor/$1" || exit
+  ../scratch-compiler/target/release/scratch-compiler src/main.scratch || exit
+  cd ../.. || exit
+  mv "vendor/$1/project.sb3" "target/$1.sb3" || exit
+
+  yes | unzip "target/$1.sb3" -d "target/$1" || exit
+  python -m json.tool "target/$1/project.json" > temp
+  cat temp > "target/$1/project.json"
+  rm temp
+  rm "target/$1.sb3"
+}
+
+build_vendor "linrays"
+
+cd "vendor/tres" || exit
+./rebuild-fs  # TODO: should really just name the bin the right thing and use their make files
 cd ../..
-yes | unzip target/linrays.sb3 -d target/linrays
-python -m json.tool target/linrays/project.json > temp
-cat temp > target/linrays/project.json
-rm temp
-# TODO: broken implicit variables, needs round trip through website
+build_vendor "tres"

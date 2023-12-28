@@ -63,7 +63,7 @@ impl<'src> Parser<'src> {
         validate(self.target);
 
         let mut functions = vec![];
-        let entry = self.target.blocks.iter().filter(|(_, v)| v.opcode.starts_with("event_"));
+        let entry = self.target.blocks.iter().filter(|(_, v)| v.opcode.starts_with("event_when"));
         for (name, block) in entry {
             println!("Parse Func {name}");
             let start = self.parse_trigger(block);
@@ -114,17 +114,18 @@ impl<'src> Parser<'src> {
     fn parse_stmt(&mut self, block: &'src Block) -> Stmt {
         match block.opcode.as_str() {
             "control_if_else" => unwrap_input!(block, Input::Branch2 { CONDITION, SUBSTACK, SUBSTACK2 } => {
-                Stmt::IfElse(self.parse_op_expr(CONDITION), self.parse_body(Some(SUBSTACK.unwrap_block())), self.parse_body(Some(SUBSTACK2.unwrap_block())))
+                Stmt::IfElse(self.parse_op_expr(CONDITION), self.parse_body(SUBSTACK.opt_block()), self.parse_body(SUBSTACK2.opt_block()))
             }),
             "control_if" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
-                Stmt::If(self.parse_op_expr(CONDITION), self.parse_body(Some(SUBSTACK.unwrap_block())))
+                Stmt::If(self.parse_op_expr(CONDITION), self.parse_body(SUBSTACK.opt_block()))
             }),
             "control_repeat" => unwrap_input!(block, Input::ForLoop { TIMES, SUBSTACK } => {
-                Stmt::RepeatTimes(self.parse_op_expr(TIMES), self.parse_body(Some(SUBSTACK.unwrap_block())))
+                Stmt::RepeatTimes(self.parse_op_expr(TIMES), self.parse_body(SUBSTACK.opt_block()))
             }),
             "control_stop" => {
                 match block.fields.as_ref().unwrap().unwrap_stop() {
-                    StopOp::ThisScript => Stmt::StopScript
+                    StopOp::ThisScript => Stmt::StopScript,
+                    StopOp::All => Stmt::Exit
                 }
             },
             "data_setvariableto" => unwrap_field!(block, Field::Var { VARIABLE } => {
@@ -192,7 +193,7 @@ impl<'src> Parser<'src> {
             }
         }
 
-        let block = self.target.blocks.get(block.unwrap_block()).unwrap();
+        let block = self.target.blocks.get(block.opt_block().unwrap()).unwrap();
         self.parse_expr(block)
     }
 
@@ -205,7 +206,7 @@ impl<'src> Parser<'src> {
         match block.opcode.as_str() {
             "operator_mathop" => unwrap_field!(block, Field::Op { OPERATOR } => {
                 if let Operand::Var(name, _) = OPERATOR {
-                    let op = match name.as_str() {
+                    let op = match name.as_str() {  // TODO: sad allocation noises
                         "ceiling" => "ceil".to_string(),
                         "log" => "log10".to_string(), // TODO: make sure right base
                         "e ^" => "exp".to_string(),
@@ -216,7 +217,7 @@ impl<'src> Parser<'src> {
                             => format!("{}().to_degrees", name),
                         _ => name.to_string(),  // TODO: don't assume valid input
                     };
-                    let op = UnOp::SuffixCall(op);  // TODO: sad allocation noises
+                    let op = UnOp::SuffixCall(op);
                     let e = Box::new(self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
                     Expr::Un(op, e)
                 } else {
@@ -234,18 +235,23 @@ impl<'src> Parser<'src> {
     fn parse_trigger(&mut self, block: &Block) -> Trigger {
         match block.opcode.as_str() {
             "event_whenflagclicked" => Trigger::FlagClicked,
+            "event_whenbroadcastreceived" => unwrap_field!(block, Field::Msg { BROADCAST_OPTION } => {
+                let target = BROADCAST_OPTION.unwrap_var();
+                Trigger::Message(safe_str(target))
+            }),
             _ => todo!("Unknown trigger {}", block.opcode)
         }
     }
 }
 
-fn validate(target: &RawSprite) {
-    assert!(!target.blocks.values().any(|v| {
-        match &v.fields {
-            Some(Field::Named(m)) => !m.is_empty(),
-            _ => false
-        }
-    }));
+fn validate(_target: &RawSprite) {
+    // TODO: bring back when lists are parsed
+    // assert!(!target.blocks.values().any(|v| {
+    //     match &v.fields {
+    //         Some(Field::Named(m)) => !m.is_empty(),
+    //         _ => false
+    //     }
+    // }));
 }
 
 /// These correspond to function definitions in the runtime. The argument types must match!
@@ -266,7 +272,7 @@ fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
 
 // TODO: Somehow ive gone down the wrong path and this sucks
 fn unwrap_arg_block<'src>(target: &'src RawSprite, block: &'src Block) -> &'src Block {
-    target.blocks.get(block.inputs.as_ref().unwrap().unwrap_one().unwrap_block()).unwrap()
+    target.blocks.get(block.inputs.as_ref().unwrap().unwrap_one().opt_block().unwrap()).unwrap()
 }
 
 fn bin_op(opcode: &str) -> Option<BinOp> {
@@ -288,7 +294,8 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
 }
 
 pub fn safe_str(name: &str) -> String {
-    name.replace(&['-', ' ', '.'], "_")
+    // TODO: be more rigorous than just hard coding the ones ive seen
+    name.replace(&['-', ' ', '.', '^', '*', '@', '=', '!', '>', '+', '-', '<', '/'], "_")
 }
 
 impl Project {
