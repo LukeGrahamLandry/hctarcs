@@ -14,6 +14,10 @@ so I guess scratch clamps you? Yep, that worked. TODO: try to optimise that out 
 Logging the count, that drew 173280 lines compared to the (expected? optimal?) 480x360=172800 = one per pixels. 
 Well, that's an extra 480 lines, so it's just counting the reset every row. 
 
+Start with softbuffer as the renderer. Can cheat because this is (i assume) using lines to draw individual pixels. 
+wgpu changed a bunch of random stuff since last I used it. 
+
+
 Once this works, next test is https://scratch.mit.edu/projects/647528063/editor/
 Needs broadcasts, lists, and costumes stamp. 
 

@@ -1,8 +1,8 @@
 #![allow(non_snake_case)]  // TODO: compiler could fix the names for me
 use crate::sprite::{Line, SpriteBase};
 
-const HALF_SCREEN_WIDTH: f64 = 240.0;
-const HALF_SCREEN_HEIGHT: f64 = 180.0;
+pub const HALF_SCREEN_WIDTH: f64 = 240.0;
+pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
 
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
 impl SpriteBase {
