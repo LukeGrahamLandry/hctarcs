@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -12,6 +13,7 @@ pub struct Sprite {
     pub procedures: Vec<Proc>,
     pub fields: Vec<VarId>,
     pub name: String,
+    pub is_stage: bool
 }
 
 /// A stack of scratch blocks with a trigger
@@ -99,11 +101,11 @@ pub enum UnOp {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub enum SType {
-    Integer,
+    // Integer,
     Number,
-    String,
-    Boolean,
-    Colour
+    // String,
+    // Boolean,
+    // Colour
 }
 
 // #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -121,7 +123,7 @@ pub enum SType {
 //     Pos { x: f64, y: f64 },
 // }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum Trigger {
     FlagClicked,
     // KeyPressed(KeyId),
@@ -135,6 +137,14 @@ macro_rules! int_key {
         #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
         pub struct $name(pub usize);
     };
+}
+
+impl Display for Trigger {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Trigger::FlagClicked => "FlagClicked".to_string(),
+        })
+    }
 }
 
 // int_key!(BackdropId);

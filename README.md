@@ -2,9 +2,8 @@
 
 > Compiling scratch projects to native executables just seems backwards! 
 
-- Implemented: Arithmetic & Logic, Global and Sprite Variables
-- Almost: Custom Blocks, Pen, Movement
-- Missing: Looks, Sound, broadcasts, Wait, Rotation, Glide, Bounce, Cloning, Lists, User Input (keyboard & mouse)
+- Implemented: Arithmetic & Logic, Global and Sprite Variables, Custom Blocks, Movement (goto)
+- Missing: Pen, Looks, Sound, Broadcasts, Wait, Rotation, Glide, Bounce, Cloning, Lists, User Input (keyboard & mouse), Loop Yielding 
 - (Almost) Working Projects: [Johan-Mi/linrays](https://scratch.mit.edu/projects/726052645)
 
 <!--
@@ -18,4 +17,6 @@
 
 - Export your scratch project to a .sb3 file.
 - `cargo run --release --bin compiler`
+- `cd target/scratch_out`
+- `cargo run`
 -->

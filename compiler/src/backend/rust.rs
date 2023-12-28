@@ -1,13 +1,38 @@
-use crate::ast::{BinOp, Expr, Project, Sprite, Stmt, UnOp};
+use std::collections::{HashMap, HashSet};
+use crate::ast::{BinOp, Expr, Project, Sprite, Stmt, Trigger, UnOp};
 
 pub fn emit_rust(project: &Project) -> String {
-    let body: String = project.targets.iter().map(|target| Emit { project, target }.emit()).collect();
-    format!("{HEADER}\n{body}")
+    let msgs: HashSet<Trigger> = project.targets.
+        iter()
+        .map(|target|
+            target.functions.iter().map(|f| f.start.clone())
+        )
+        .flatten()
+        .collect();
+    let msg_fields: String = msgs.iter().map(|t| format!("{}{}, \n", if *t == Trigger::FlagClicked {"#[default]"} else {""}, t.to_string())).collect();
+    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new() }.emit()).collect();
+    let sprites: String = project.targets
+        .iter()
+        .filter(|target| !target.is_stage)  // TODO: wrong cause stage can have scripts but im using it as special magic globals so need to rethink.
+        .map(|target| format!("Box::new({}::default()), ", target.name))
+        .collect();
+
+    format!(r#"
+{HEADER}
+fn main() {{
+    World::run_program(Stage::default(), vec![{sprites}])
+}}
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Default)]
+enum Msg {{
+    {msg_fields}
+}}
+    {body}"#)
 }
 
 struct Emit<'src> {
     project: &'src Project,
-    target: &'src Sprite
+    target: &'src Sprite,
+    triggers: HashMap<Trigger, String>
 }
 
 pub const CARGO_TOML: &str = r#"
@@ -20,15 +45,13 @@ edition = "2021"
 runtime = { path = "../../runtime" }
 "#;
 
-const HEADER: &str = r#"//! This file is @generated from a Scratch project by github.com/LukeGrahamLandry/hctarcs
+const HEADER: &str = r#"
+//! This file is @generated from a Scratch project by github.com/LukeGrahamLandry/hctarcs
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(unused_parens)]
-use runtime::sprite::{{SpriteBase, Colour}};
-use runtime::builtins;
-fn main() {
-    todo!("entry point")
-}
+use runtime::sprite::{SpriteBase, Sprite};
+use runtime::{builtins, World};
 "#;
 
 impl<'src> Emit<'src> {
@@ -45,7 +68,32 @@ impl<'src> Emit<'src> {
             };
             format!("fn {}(&mut self, sprite: &mut SpriteBase, globals: &mut Stage{}){{\n{}}}\n\n", t.name, args, self.emit_block(&t.body))
         }).collect();
-        format!("pub struct {0} {{\n{fields}}}\nimpl {0} {{\n{procs}\n}}\n\n", self.target.name)
+        for func in &self.target.functions {
+            let body = self.emit_block(&func.body);
+            let handler = match self.triggers.get(&func.start) {
+                Some(prev) => prev.clone() + body.as_str(),
+                None => body
+            };
+            self.triggers.insert(func.start.clone(), handler);
+        }
+        let handlers: String = self.triggers.iter().map(|(trigger, body)| format!("Msg::{trigger} => {{{body}}},\n")).collect();
+        // TODO: wrong! defaults are in the json
+        format!(r##"
+#[derive(Default, Clone)]
+pub struct {0} {{
+{fields}}}
+impl {0} {{
+{procs}
+}}
+impl Sprite<Msg, Stage> for {0} {{
+    fn receive(&mut self, sprite: &mut SpriteBase, globals: &mut Stage, msg: Msg) {{
+        match msg {{
+            {handlers}
+            _ => {{}}  // Ignored.
+        }}
+    }}
+}}
+        "##, self.target.name)
     }
 
     // TODO: Proper indentation

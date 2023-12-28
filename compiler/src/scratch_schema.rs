@@ -88,6 +88,9 @@ pub enum Input {
         FROM: Operand,
         TO: Operand,
     },
+    Colour {
+        COLOR: Operand,
+    },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty
     Named(HashMap<String, Operand>),
@@ -169,6 +172,7 @@ impl Input {
         match self {
             Input::NumUn { NUM } => NUM,
             Input::Val { VALUE } => VALUE,
+            Input::Colour { COLOR } => COLOR,
             Input::Custom { custom_block } => custom_block,
             Input::Named(vals) => if vals.len() == 1 {
                     vals.iter().next().unwrap().1
@@ -184,6 +188,7 @@ impl Input {
             Input::NumBin { NUM1, NUM2 } => (NUM1, NUM2),
             Input::Operands { OPERAND1, OPERAND2 } => (OPERAND1, OPERAND2),
             Input::Range { FROM, TO } => (FROM, TO),
+            Input::Pos { X, Y } => (X, Y),
             _ => panic!("Expected two Operand in Input but found {:?}", self)
         }
     }

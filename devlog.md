@@ -1,4 +1,21 @@
 
+## Rendering Pen (Dec 27)
+
+To start with, lets just collect all the lines it draws. 
+
+Walk through the list of triggers and create an enum. 
+Then generate a handler function that matches a message and runs the code. 
+
+It runs but infinite loops. 
+The raytracer starts by GoTo(-Infinity, Infinity) and the calculates screen size based on its coordinates,
+so I guess scratch clamps you? Yep, that worked. TODO: try to optimise that out sometimes? Or just hope llvm does it I guess. 
+- https://en.scratch-wiki.info/wiki/Coordinate_System
+
+Logging the count, that drew 173280 lines compared to the (expected? optimal?) 480x360=172800 = one per pixels. 
+Well, that's an extra 480 lines, so it's just counting the reset every row. 
+
+Once this works, next test is https://scratch.mit.edu/projects/647528063/editor/
+Needs broadcasts, lists, and costumes stamp. 
 
 ## Variables & Emit Rust (Dec 27)
 

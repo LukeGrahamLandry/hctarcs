@@ -96,7 +96,8 @@ impl<'src> Parser<'src> {
             functions,
             procedures,
             fields: self.fields.iter().map(|(_, v)| *v).collect(),
-            name: self.target.name.clone()
+            name: self.target.name.clone(),
+            is_stage: self.target.isStage,
         }
     }
 
@@ -159,6 +160,11 @@ impl<'src> Parser<'src> {
                 let args = match proto {
                     &[] => vec![],
                     &[SType::Number] => vec![self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one())],
+                    &[SType::Number, SType::Number] => {
+                        let (a, b) = block.inputs.as_ref().unwrap().unwrap_pair();
+                        let (a, b) = (self.parse_op_expr(a), self.parse_op_expr(b));
+                        vec![a, b]
+                    }
                     _ => vec![UnknownExpr(format!("call({:?})", proto))],
                 };
                 Stmt::BuiltinRuntimeCall(block.opcode.clone(), args)
@@ -240,7 +246,7 @@ fn validate(target: &RawSprite) {
 /// These correspond to function definitions in the runtime. The argument types must match!
 fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
     match opcode {
-        "pen_setPenColorToColor" => Some(&[SType::Colour]),
+        "pen_setPenColorToColor" |
         "pen_setPenSizeTo" |
         "motion_changexby" |
         "motion_changeyby"|
@@ -248,6 +254,7 @@ fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
         "motion_sety" => Some(&[SType::Number]),
         "pen_penUp" |
         "pen_penDown" => Some(&[]),
+        "motion_gotoxy" => Some(&[SType::Number, SType::Number]),
         _ => None
     }
 }
