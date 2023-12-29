@@ -33,7 +33,7 @@ impl From<ScratchProject> for Project {
 
         for target in &value.targets {
             let fields = get_vars(&mut proj, target);
-            let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new() }.parse();
+            let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new(), procedures: HashMap::new() }.parse();
             proj.targets.push(result);
         }
 
@@ -57,12 +57,56 @@ struct Parser<'src> {
     fields: HashMap<String, VarId>,
     globals: &'src HashMap<String, VarId>,
     args_by_name: HashMap<String, VarId>,
+    procedures: HashMap<String, ProcProto<'src>>,
+}
+
+struct ProcProto<'src> {
+    params: Vec<VarId>,
+    args_by_name: HashMap<String, VarId>,
+    block: &'src Block
 }
 
 impl<'src> Parser<'src> {
     fn parse(mut self) -> Sprite {
         println!("Parse Sprite {}", self.target.name);
         validate(self.target);
+
+        // Need to make two passes over the procedures.
+        // Declare parameter vars for type inference then emit the body.
+        let procedure_defs: Vec<(&String, &Block)> = self.target.blocks.iter().filter(|(_, v)| v.opcode == "procedures_definition").collect();
+        self.procedures = procedure_defs
+            .iter()
+            .map(|(_, block)| block)
+            .map(|block| {
+                assert!(matches!(block.inputs, Some(Input::Custom { .. })));
+                let proto = unwrap_arg_block(self.target, block);
+                assert_eq!(proto.opcode, "procedures_prototype");
+                let proto = proto.mutation.as_ref().unwrap();
+                // TODO: arg names are not globally unique
+                let args: Vec<_> = proto.arg_names().iter().map(|n| self.project.next_var(n)).collect();
+                println!("Decl proc {}", proto.name());
+                (proto.name().to_string(), ProcProto {
+                    args_by_name: proto.arg_names().iter().zip(args.iter()).map(|(k, v)| (k.clone(), *v)).collect(),
+                    params: args,
+                    block,
+                })
+            })
+            .collect();
+
+        let mut procedures = vec![];
+        let procs: Vec<_> = self.procedures.keys().cloned().collect();
+        for name in &procs {
+            let proc = self.procedures.get(name).unwrap();
+            println!("Parse Proc {name}");
+            let args = proc.params.clone();
+            self.args_by_name = proc.args_by_name.clone();
+            procedures.push(Proc {
+                name: safe_str(name),
+                body: self.parse_body(proc.block.next.as_deref()),
+                args,
+            });
+            self.args_by_name.clear();
+        }
 
         let mut functions = vec![];
         let entry = self.target.blocks.iter().filter(|(_, v)| v.opcode.starts_with("event_when"));
@@ -73,25 +117,6 @@ impl<'src> Parser<'src> {
                 start,
                 body: self.parse_body(block.next.as_deref()),
             });
-        }
-        let mut procedures = vec![];
-        let defs = self.target.blocks.iter().filter(|(_, v)| v.opcode == "procedures_definition");
-        for (name, block) in defs {
-            println!("Parse Proc {name}");
-
-            assert!(matches!(block.inputs, Some(Input::Custom { .. })));
-            let proto = unwrap_arg_block(self.target, block);
-            assert_eq!(proto.opcode, "procedures_prototype");
-            let proto = proto.mutation.as_ref().unwrap();
-            // TODO: arg names are not globally unique
-            let args: Vec<_> = proto.arg_names().iter().map(|n| self.project.next_var(n)).collect();
-            self.args_by_name = proto.arg_names().iter().zip(args.iter()).map(|(k, v)| (k.clone(), *v)).collect();
-            procedures.push(Proc {
-                name: safe_str(proto.name()),
-                body: self.parse_body(block.next.as_deref()),
-                args,
-            });
-            self.args_by_name.clear();
         }
 
         Sprite {
@@ -179,14 +204,20 @@ impl<'src> Parser<'src> {
             }),
             "procedures_call" => unwrap_input!(block, Input::Named(args) => {
                 let proto = block.mutation.as_ref().unwrap();
+                println!("Call {}", proto.name());
                 let args: Vec<_> = proto.arg_ids().iter()
                     .map(|id| args.get(id).unwrap())
                     .map(|o| self.parse_op_expr(o))
                     .collect();
 
-                let types: Vec<_> = args.iter().map(|e| self.infer_type(e)).collect();
-                // let arg_vars = pro
-
+                let arg_types: Vec<_> = args.iter().map(|e| self.infer_type(e)).collect();
+                let param_count = self.procedures.get(proto.name()).unwrap().params.len();
+                for i in 0..param_count {
+                    let id = self.procedures.get(proto.name()).unwrap().params[i];
+                    if let Some(t) = &arg_types[i] {
+                        self.project.expect_type(id, t.clone());
+                    }
+                }
 
                 Stmt::CallCustom(safe_str(proto.name()), args)
             }),

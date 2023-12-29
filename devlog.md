@@ -1,6 +1,20 @@
 
+## argument type inference (Dec 29)
+
+So I need a way to link the expressions used as arguments when calling a procedure to the parameter variables used in the body.  
+Currently I'm just emitting procedures in sequence all at once, but I need to do a pass first that just notices which exist, 
+so I know there's a VarId already declared for the parameters when I try to call one.
+
+That works and I can infer types, but now I have to allow arguments to be polymorphic as well because
+vec_push(value) can be a num or a string. 
+
 ## async ideas (Dec 28)
 
+Do my own async, so I don't have to deal with functions closing over their mutable sprite/global arguments? 
+I'm not sure how you'd express the idea of "yes this future needs unique access to something,
+but it releases it when it yields and the caller will return it when it resolves" in rust's async model.
+I think I want my runtime thing to be in charge so when you await WaitSeconds or whatever, it jumps back out into my code. 
+The more interesting case being BroadcastAndWait where I need to go back into the World, and it needs access to all the sprites. 
 
 
 ## lists & type inference (Dec 28) 
