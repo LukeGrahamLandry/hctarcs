@@ -25,7 +25,7 @@ macro_rules! unwrap_field {
 
 impl From<ScratchProject> for Project {
     fn from(value: ScratchProject) -> Self {
-        let mut proj = Project { targets: vec![], var_names: vec![] };
+        let mut proj = Project { targets: vec![], var_names: vec![], expected_types: vec![] };
 
         let mut stages = value.targets.iter().filter(|t| t.isStage);
         let stage = stages.next().unwrap();
@@ -111,16 +111,22 @@ impl<'src> Parser<'src> {
         body
     }
 
+    fn parse_t(&mut self, e: &Operand, t: SType) -> Expr {
+        let e = self.parse_op_expr(e);
+        self.expect_type(&e, t);
+        e
+    }
+
     fn parse_stmt(&mut self, block: &'src Block) -> Stmt {
         match block.opcode.as_str() {
             "control_if_else" => unwrap_input!(block, Input::Branch2 { CONDITION, SUBSTACK, SUBSTACK2 } => {
-                Stmt::IfElse(self.parse_op_expr(CONDITION), self.parse_body(SUBSTACK.opt_block()), self.parse_body(SUBSTACK2.opt_block()))
+                Stmt::IfElse(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()), self.parse_body(SUBSTACK2.opt_block()))
             }),
             "control_if" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
-                Stmt::If(self.parse_op_expr(CONDITION), self.parse_body(SUBSTACK.opt_block()))
+                Stmt::If(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()))
             }),
             "control_repeat" => unwrap_input!(block, Input::ForLoop { TIMES, SUBSTACK } => {
-                Stmt::RepeatTimes(self.parse_op_expr(TIMES), self.parse_body(SUBSTACK.opt_block()))
+                Stmt::RepeatTimes(self.parse_t(TIMES, SType::Number), self.parse_body(SUBSTACK.opt_block()))
             }),
             "control_stop" => {
                 match block.fields.as_ref().unwrap().unwrap_stop() {
@@ -130,40 +136,58 @@ impl<'src> Parser<'src> {
             },
             "data_setvariableto" => unwrap_field!(block, Field::Var { VARIABLE } => {
                 let value = self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one());
+                let val_t = self.infer_type(&value);
                 match self.fields.get(VARIABLE.unwrap_var()) {
-                    Some(v) => Stmt::SetField(*v, value),
+                    Some(&v) => {
+                        if let Some(val_t) = val_t {
+                            self.project.expect_type(v, val_t);
+                        }
+                        Stmt::SetField(v, value)
+                    },
                     None => {
-                        let v = self.globals.get(VARIABLE.unwrap_var()).unwrap();
-                        Stmt::SetGlobal(*v, value)
+                        let v = *self.globals.get(VARIABLE.unwrap_var()).unwrap();
+                        if let Some(val_t) = val_t {
+                            self.project.expect_type(v, val_t);
+                        }
+                        Stmt::SetGlobal(v, value)
                     }
                 }
             }),
             "data_changevariableby" => unwrap_field!(block, Field::Var { VARIABLE } => {  // TODO: this could have a new ast node and use prettier +=
                 let value = self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one());
+                self.expect_type(&value, SType::Number);
                 match self.fields.get(VARIABLE.unwrap_var()) {
-                    Some(v) => Stmt::SetField(*v, Expr::Bin(BinOp::Add, Box::new(Expr::GetField(*v)), Box::new(value))),
+                    Some(&v) => {
+                        self.project.expect_type(v, SType::Number);
+                        Stmt::SetField(v, Expr::Bin(BinOp::Add, Box::new(Expr::GetField(v)), Box::new(value)))
+                    },
                     None => {
-                        let v = self.globals.get(VARIABLE.unwrap_var()).unwrap();
-                        Stmt::SetGlobal(*v, Expr::Bin(BinOp::Add, Box::new(Expr::GetGlobal(*v)), Box::new(value)))
+                        let v = *self.globals.get(VARIABLE.unwrap_var()).unwrap();
+                        self.project.expect_type(v, SType::Number);
+                        Stmt::SetGlobal(v, Expr::Bin(BinOp::Add, Box::new(Expr::GetGlobal(v)), Box::new(value)))
                     }
                 }
             }),
             "procedures_call" => unwrap_input!(block, Input::Named(args) => {
                 let proto = block.mutation.as_ref().unwrap();
-                let args = proto.arg_ids().iter()
+                let args: Vec<_> = proto.arg_ids().iter()
                     .map(|id| args.get(id).unwrap())
                     .map(|o| self.parse_op_expr(o))
                     .collect();
+
+                let types: Vec<_> = args.iter().map(|e| self.infer_type(e)).collect();
+                // let arg_vars = pro
+
 
                 Stmt::CallCustom(safe_str(proto.name()), args)
             }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 let args = match proto {
                     &[] => vec![],
-                    &[SType::Number] => vec![self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one())],
+                    &[SType::Number] => vec![self.parse_t(block.inputs.as_ref().unwrap().unwrap_one(), SType::Number)],
                     &[SType::Number, SType::Number] => {
                         let (a, b) = block.inputs.as_ref().unwrap().unwrap_pair();
-                        let (a, b) = (self.parse_op_expr(a), self.parse_op_expr(b));
+                        let (a, b) = (self.parse_t(a, SType::Number), self.parse_t(b, SType::Number));
                         vec![a, b]
                     }
 
@@ -176,6 +200,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    // TODO: could replace this with parse_t since you probably always want that
     fn parse_op_expr(&mut self, block: &Operand) -> Expr {
         if let Some(constant) = block.constant() {
             return Expr::Literal(constant.to_string());
@@ -219,6 +244,7 @@ impl<'src> Parser<'src> {
                     };
                     let op = UnOp::SuffixCall(op);
                     let e = Box::new(self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
+                    self.expect_type(&e, SType::Number);
                     Expr::Un(op, e)
                 } else {
                     panic!("Expected operator_mathop[OPERATOR]==Var(..) found {:?}", OPERATOR)
@@ -229,6 +255,90 @@ impl<'src> Parser<'src> {
                 Expr::GetArgument(*v)
             }),
             _ => Expr::BuiltinRuntimeGet(block.opcode.clone())  // TODO: should be checked
+        }
+    }
+
+    // The type checking is really to propagate the inference.
+    // Input should always be valid since its generated by scratch.
+    // A panic here is probably a bug.
+    fn expect_type(&mut self, e: &Expr, t: SType) {
+        println!("expect_type {:?} {:?}", t, e);
+        match e {
+            Expr::GetField(v) |
+            Expr::GetGlobal(v) |
+            Expr::GetArgument(v)
+                => self.project.expect_type(*v, t),
+            Expr::Bin(op, rhs, lhs) => {
+                match op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random => {
+                        assert_eq!(t, SType::Number);
+                        self.expect_type(rhs, SType::Number);
+                        self.expect_type(lhs, SType::Number);
+                    }
+                    BinOp::GT | BinOp::LT => {
+                        assert_eq!(t, SType::Bool);
+                        self.expect_type(rhs, SType::Number);
+                        self.expect_type(lhs, SType::Number);
+                    }
+                    BinOp::EQ => assert_eq!(t, SType::Bool),
+                    BinOp::And | BinOp::Or => {
+                        assert_eq!(t, SType::Bool);
+                        self.expect_type(rhs, SType::Bool);
+                        self.expect_type(lhs, SType::Bool);
+                    }
+                }
+            }
+            Expr::Un(op, v) => {
+                match op {
+                    UnOp::Not => {
+                        assert_eq!(t, SType::Bool);
+                        self.expect_type(v, SType::Bool);
+                    }
+                    UnOp::SuffixCall(_) => {
+                        assert_eq!(t, SType::Number);
+                        self.expect_type(v, SType::Number);
+                    }
+                }
+            }
+            Expr::Literal(s) => {
+                match s.as_str() {  // TODO: really need to parse this in one place
+                    "true" | "false" => assert_eq!(t, SType::Bool),
+                    "Infinity" | "-Infinity" => assert_eq!(t, SType::Number),
+                    "" => assert_eq!(t, SType::Number), // TODO: permit the empty string
+                    _ => match s.parse::<f64>() {
+                        Ok(_) => assert_eq!(t, SType::Number),
+                        Err(_) => assert_eq!(t, SType::Str),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn infer_type(&mut self, e: &Expr) -> Option<SType> {
+        match e {
+            Expr::GetField(v) | Expr::GetGlobal(v) | Expr::GetArgument(v)
+                => self.project.expected_types[v.0].clone(),
+            Expr::Bin(op, ..) => {
+                match op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random => Some(SType::Number),
+                    BinOp::GT | BinOp::LT | BinOp::EQ | BinOp::And | BinOp::Or => Some(SType::Bool),
+                }
+            }
+            Expr::Un(op, _) =>  match op {
+                UnOp::Not => Some(SType::Bool),
+                UnOp::SuffixCall(_) => Some(SType::Number),
+            },
+            Expr::Literal(s) => Some(match s.as_str() {  // TODO: really need to parse this in one place
+                "true" | "false" => SType::Bool,
+                "Infinity" | "-Infinity" => SType::Number,
+                "" => SType::Number, // TODO: permit the empty string
+                _ => match s.parse::<f64>() {
+                    Ok(_) => SType::Number,
+                    Err(_) => SType::Str,
+                }
+            }),
+            _ => None
         }
     }
 
@@ -301,6 +411,16 @@ pub fn safe_str(name: &str) -> String {
 impl Project {
     fn next_var(&mut self, name: &str) -> VarId {
         self.var_names.push(safe_str(name));
+        self.expected_types.push(None);
         VarId(self.var_names.len()-1)
+    }
+
+    fn expect_type(&mut self, v: VarId, t: SType) {
+        match &self.expected_types[v.0] {
+            None => {
+                self.expected_types[v.0] = Some(t);
+            }
+            Some(prev) => assert_eq!(prev, &t)
+        }
     }
 }

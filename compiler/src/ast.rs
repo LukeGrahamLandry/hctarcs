@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 
@@ -5,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Project {
     pub targets: Vec<Sprite>,
     pub var_names: Vec<String>,
+    pub expected_types: Vec<Option<SType>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -13,7 +15,7 @@ pub struct Sprite {
     pub procedures: Vec<Proc>,
     pub fields: Vec<VarId>,
     pub name: String,
-    pub is_stage: bool
+    pub is_stage: bool,
 }
 
 /// A stack of scratch blocks with a trigger
@@ -103,9 +105,10 @@ pub enum UnOp {
 pub enum SType {
     // Integer,
     Number,
-    // String,
-    // Boolean,
-    // Colour
+    Bool,
+    Str,
+    ListOfNumber,
+    ListOfStr,
 }
 
 // #[derive(Serialize, Deserialize, Debug, Clone)]

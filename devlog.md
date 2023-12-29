@@ -1,5 +1,16 @@
 
-## contributing to the lisp one
+## type inference (Dec 28) 
+
+tres actually uses different types, so I cant avoid anymore. 
+As a starting point, what if we assume thing are never actually polymorphic. 
+So when you see an opcode using a variable, infer a type for it. 
+
+Set variable: infer value type and expect var type to be that. 
+Increment variable: expect value and var to be number. 
+I'm treating the strings true and false as boolean literals which is wrong and should be fixed I guess. Have an opt pass that notices that idiom. 
+
+
+## contributing to the lisp one (Dec 28)
 
 Implicit locals: 
 Procedure.variables has them and the cranelift backend defines them as real locals.   

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
-use crate::ast::{BinOp, Expr, Project, Sprite, Stmt, Trigger, UnOp};
+use std::io::stderr;
+use crate::ast::{BinOp, Expr, Project, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 
 pub fn emit_rust(project: &Project) -> String {
     let msgs: HashSet<Trigger> = project.targets.
@@ -62,16 +63,19 @@ use runtime::sprite::{SpriteBase, Sprite};
 use runtime::{builtins, World};
 "#;
 
+
 impl<'src> Emit<'src> {
     fn emit(&mut self) -> String {
-        let fields: String = self.target.fields.iter().map(|v| {
-            format!("   {}: f64,\n", self.project.var_names[v.0])  // TODO: types
+        let fields: String = self.target.fields.iter().map(|&v| {
+            format!("   {}: {},\n", self.project.var_names[v.0], self.inferred_type_name(v))
         }).collect();
         let procs: String = self.target.procedures.iter().map(|t| {
             let args = if t.args.is_empty() {
                 "".to_string()
             } else {
-                let args: Vec<_> = t.args.iter().map(|v| self.project.var_names[v.0].clone() + ": f64").collect();
+                let args: Vec<_> = t.args.iter().map(|&v| {
+                    self.project.var_names[v.0].clone() + ": " + self.inferred_type_name(v)
+                }).collect();
                 format!(", {}", args.join(", "))
             };
             format!("fn {}(&mut self, sprite: &mut SpriteBase, globals: &mut Stage{}){{\n{}}}\n\n", t.name, args, self.emit_block(&t.body))
@@ -148,6 +152,7 @@ impl Sprite<Msg, Stage> for {0} {{
     fn emit_expr(&mut self, expr: &'src Expr) -> String {
         match expr {
             Expr::Bin(op, rhs, lhs) => {
+                // TODO: clean up `[true/false literal] == [some bool expr]`
                 let infix = match op {
                     BinOp::Add => Some("+"),
                     BinOp::Sub => Some("-"),
@@ -180,8 +185,7 @@ impl Sprite<Msg, Stage> for {0} {{
             Expr::GetArgument(v) => self.project.var_names[v.0].clone(),
             Expr::Literal(s) => {
                 match s.as_str() {  // TODO: proper strings and bools. HACK!
-                    "true" => "1f64".to_string(),
-                    "false" => "0f64".to_string(),
+                    "true" | "false" => s.clone(),
                     "Infinity" => "f64::INFINITY".to_string(),
                     "-Infinity" => "f64::NEG_INFINITY".to_string(),
                     "" => "0f64".to_string(),
@@ -197,5 +201,21 @@ impl Sprite<Msg, Stage> for {0} {{
             Expr::BuiltinRuntimeGet(name) => format!("sprite.{}()", name),
             _ => format!("todo!(r#\"{:?}\"#)", expr)
         }
+    }
+
+    fn inferred_type_name(&self, v: VarId) -> &'static str {
+        match &self.project.expected_types[v.0] {
+            None => "f64 /* guess */",
+            Some(t) => type_name(t.clone()),
+        }
+    }
+}
+
+fn type_name(t: SType) -> &'static str {
+    match t {
+        SType::Number => "f64",
+        SType::ListOfNumber => "Vec<f64>",
+        SType::Bool => "bool",
+        SType::Str => "String",
     }
 }
