@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::env;
 use std::num::NonZeroU32;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event::{Event, KeyEvent, WindowEvent};
@@ -25,6 +26,7 @@ pub struct World<Msg: Clone + Copy, Globals> {
 impl<Msg: Clone + Copy, Globals> World<Msg, Globals> {
     /// This function does not return until the program is over.
     pub fn run_program(globals: Globals, custom: Vec<Box<dyn Sprite<Msg, Globals>>>) {
+        credits();
         let mut world = World {
             bases: vec![SpriteBase::default(); custom.len()].into(),
             custom: custom.into(),
@@ -116,3 +118,13 @@ impl<Msg: Clone + Copy, Globals> World<Msg, Globals> {
 }
 
 
+fn credits() {
+    if env::args().len() > 1 {
+        println!("{}", CREDITS)
+    }
+}
+
+const CREDITS: &str = r#"This program is compiled from a Scratch project using github.com/LukeGrahamLandry/hctarcs
+All projects shared on the Scratch website are covered by the Creative Commons Attribution Share-Alike license.
+Scratch is a project of the Scratch Foundation, in collaboration with the Lifelong Kindergarten Group at the MIT Media Lab. It is available for free at https://scratch.mit.edu
+"#;

@@ -6,6 +6,9 @@
 - Missing: Looks, Sound, Broadcasts, Wait, Rotation, Glide, Bounce, Cloning, Lists, User Input (keyboard & mouse), Loop Yielding 
 - (Almost) Working Projects: [Johan-Mi/linrays](https://scratch.mit.edu/projects/726052645)
 
+BEWARE: There's no sandbox-ing. Only run projects on your computer if you understand what they're doing. 
+*If you can think of a way to get arbitrary code execution with this, please let me know!*
+
 <!--
 ## Build
 
@@ -28,6 +31,8 @@
 - Target wasm smaller than turbowarp's embed 
 
 ## How It Works: Compiler
+
+Wasm Build: `cargo build --release --target wasm32-unknown-unknown --bin compiler`
 
 ## How It Works: Runtime
 

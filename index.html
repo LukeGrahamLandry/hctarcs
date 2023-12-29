@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+    <title>hctarcs</title>
+    <style>
+        a {
+            color: rgb(0, 204, 255);
+        }
+    </style>
+</head>
+<body style="background-color: gray;">
+<h3> hctarcs: Compile Scratch Projects to Native Rust Programs! </h3>
+<b style="color: darkred"> Very WIP. Most features are not supported. Working example project: <a href="https://scratch.mit.edu/projects/726052645">Johan-Mi/linrays</a></b>
+<noscript> Your browser No JavaScript </noscript>
+<div id="ui" hidden>
+    <b> Paste Scratch project.json here:</b> <br>
+    <textarea id="projectjson" rows="5" style="width:100%"></textarea><br>
+    <b id="msgbox"></b> <br>
+    <div id="resultbox" hidden>
+        <b> Result src/main.rs:</b> <br>
+        <textarea id="mainrs" rows="10" style="width:100%"></textarea><br>
+        <b> Result Cargo.toml:</b> <br>
+        <textarea id="cargotoml" rows="10" style="width:100%"></textarea><br>
+        <b> Build Instructions:</b><br>
+        <ul>
+            <li>Install rust</li>
+            <li>Run <code>cargo new --bin scratch_out</code></li>
+            <li>Replace the code in <code>src/main.rs</code> and <code>Cargo.toml</code> respectively.</li>
+            <li>Run <code>cargo build --release</code></li>
+            <li>Your program will be in the file <code>target/release/scratch_out</code></li>
+        </ul>
+    </div>
+    <div style="text-align: center"><a href="https://github.com/LukeGrahamLandry/hctarcs">Github</a></div>
+</div>
+<script>
+    let Compiler = null;
+    const projectjson = document.getElementById("projectjson");
+    const mainrs = document.getElementById("mainrs");
+    const cargotoml = document.getElementById("cargotoml");
+    const msgbox = document.getElementById("msgbox");
+    const resultbox = document.getElementById("resultbox");
+    function handleWasmLoaded(wasm) {
+        console.log("Wasm Loaded")
+        Compiler = wasm.instance.exports;
+        document.getElementById("ui").hidden = false;
+        projectjson.addEventListener("input", () => {
+            const startTime = performance.now();
+            try {
+                JSON.parse(projectjson.value)
+            } catch (e) {
+                report(false, e);
+                return;
+            }
+            let src = putWasmString(projectjson.value);
+            let rs;
+            try {
+                rs  = Compiler.compile_sb3(src.ptr, src.len);
+                Compiler.drop_c_str(src.ptr);
+            } catch (e) {
+                report(false, e.stack);
+                Compiler.drop_c_str(src.ptr);
+                return;
+            }
+            mainrs.value = getWasmString(rs, Compiler.c_str_len(rs));
+            Compiler.drop_c_str(rs);
+            let ct = Compiler.get_cargo_toml();
+            cargotoml.value = getWasmString(ct, Compiler.c_str_len(ct));
+            Compiler.drop_c_str(ct);
+            resultbox.hidden = false;
+            report(true, "Compiled " + (projectjson.value.length) + " bytes of Scratch to " + (mainrs.value.length) + " bytes of Rust in " + (Math.round(performance.now() - startTime)) + "ms.");
+            projectjson.value = "";
+        });
+    }
+
+    const callbacks = { env: {} }
+    if (typeof WebAssembly === "object" && WebAssembly.instantiateStreaming !== undefined) {
+        WebAssembly.instantiateStreaming(fetch("target/wasm32-unknown-unknown/release/compiler.wasm"), callbacks).then(handleWasmLoaded);
+    } else {
+        alert("Your Browser No Wasm")
+    }
+
+    function report(success, msg) {
+        msgbox.style.color = success ? "darkgreen" : "darkred";
+        msgbox.innerText = (success ? "" : "Compilation Failed:\n") + msg;
+        resultbox.hidden = !success;
+        console.log(msg);
+    }
+
+    const de = new TextDecoder();
+    const en = new TextEncoder();
+    function getWasmString(ptr, len) {
+        const buffer = new Uint8Array(Compiler.memory.buffer, ptr, len);
+        return de.decode(buffer);
+    }
+    function putWasmString(str) {
+        let buf = en.encode(str);
+        let ptr = Compiler.alloc_str(buf.length + 1);
+        const buffer = new Uint8Array(Compiler.memory.buffer, ptr, buf.length + 1);
+        buffer.set(buf, 0);
+        buffer[buf.length] = 0;
+        return { ptr: ptr, len: buf.length };
+    }
+</script>
+</body>
+</html>

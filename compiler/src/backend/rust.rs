@@ -83,7 +83,7 @@ strip = "debuginfo" # true
 "#;
 
 const HEADER: &str = r#"
-//! This file is @generated from a Scratch project by github.com/LukeGrahamLandry/hctarcs
+//! This file is @generated from a Scratch project using github.com/LukeGrahamLandry/hctarcs
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(unused_parens)]

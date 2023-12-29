@@ -5,7 +5,7 @@ pub mod backend;
 
 pub mod wasm_interface {
     use std::alloc::{alloc, Layout};
-    use std::ffi::{c_char, CString};
+    use std::ffi::{c_char, CStr, CString};
     use std::ptr::slice_from_raw_parts;
     use crate::ast::Project;
     use crate::backend::rust::{CARGO_TOML, emit_rust};
@@ -34,5 +34,11 @@ pub mod wasm_interface {
     #[no_mangle]
     pub unsafe extern "C" fn drop_c_str(ptr: *mut c_char) {
         let _ = CString::from_raw(ptr);
+    }
+
+    /// result does NOT include null terminator.
+    #[no_mangle]
+    pub unsafe extern "C" fn c_str_len(ptr: *mut c_char) -> usize {
+        CStr::from_ptr(ptr).to_bytes().len()
     }
 }
