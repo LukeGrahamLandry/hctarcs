@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]  // TODO: compiler could fix the names for me
 
+use std::borrow::Cow;
 use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
@@ -96,10 +97,10 @@ pub fn dyn_rand(min: f64, max: f64) -> f64 {
 }
 
 // TODO: avoid this whenever possible
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NumOrStr {
     Num(f64),
-    Str(String),
+    Str(Cow<'static, str>),
 }
 
 impl From<f64> for NumOrStr {
@@ -108,8 +109,8 @@ impl From<f64> for NumOrStr {
     }
 }
 
-impl From<String> for NumOrStr {
-    fn from(value: String) -> Self {
+impl From<Cow<'static, str>> for NumOrStr {
+    fn from(value: Cow<'static, str>) -> Self {
         NumOrStr::Str(value)
     }
 }
@@ -123,7 +124,7 @@ impl From<NumOrStr> for f64 {
     }
 }
 
-impl From<NumOrStr> for String {
+impl From<NumOrStr> for Cow<'static, str> {
     fn from(value: NumOrStr) -> Self {
         match value {
             NumOrStr::Num(n) => todo!("Tried to convert {:?} to string.", n),

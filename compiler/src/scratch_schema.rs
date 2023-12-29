@@ -57,6 +57,9 @@ pub enum Input {
     NumUn {
         NUM: Operand,
     },
+    Un {
+        OPERAND: Operand,
+    },
     Operands {  // logic
         OPERAND1: Operand,
         OPERAND2: Operand,
@@ -75,11 +78,18 @@ pub enum Input {
         TIMES: Operand,
         SUBSTACK: Operand
     },
+    SecretForLoop {
+        VALUE: Operand,
+        SUBSTACK: Operand
+    },
     Val {  // variable set
         VALUE: Operand,
     },
     Custom {
         custom_block: Operand,
+    },
+    Broadcast {
+        BROADCAST_INPUT: Operand
     },
     Pos {
         X: Operand,
@@ -105,6 +115,10 @@ pub enum Input {
     CharStr {
         LETTER: Operand,
         STRING: Operand,
+    },
+    StrPair {
+        STRING1: Operand,
+        STRING2: Operand,
     },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty

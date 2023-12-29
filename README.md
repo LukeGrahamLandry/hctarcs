@@ -26,3 +26,10 @@
 - Faster than scratch-vm and faster than turbowarp
 - Target native smaller than turbowarp (both electron (lol) and webview)
 - Target wasm smaller than turbowarp's embed 
+
+## How It Works: Compiler
+
+## How It Works: Runtime
+
+Unlike TurboWarp, this does not include any code from the original Scratch runtime.  
+winit creates a window and softbuffer puts pixels on it. 

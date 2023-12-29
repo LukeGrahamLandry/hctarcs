@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -16,6 +14,7 @@ pub struct Sprite {
     pub fields: Vec<VarId>,
     pub name: String,
     pub is_stage: bool,
+    pub is_singleton: bool,
 }
 
 /// A stack of scratch blocks with a trigger
@@ -48,12 +47,15 @@ pub enum Stmt {
     // RepeatUntil(Expr, Vec<Stmt>),
     StopScript,
     Exit,
+    RepeatTimesCapture(Expr, Vec<Stmt>, VarId, Scope),
 
     // Variables
     SetField(VarId, Expr),
     SetGlobal(VarId, Expr),
     ListSet(Scope, VarId, Expr, Expr),
     ListPush(Scope, VarId, Expr),
+    ListClear(Scope, VarId),
+    BroadcastWait(Expr),
 
     // Other
     BuiltinRuntimeCall(String, Vec<Expr>),
@@ -95,7 +97,7 @@ pub enum BinOp {
     And,
     Or,
     Pow,
-    // StrJoin,
+    StrJoin,
     // StrLetterOf,
     // StrContains,
     Random
@@ -140,6 +142,7 @@ pub enum SType {
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub enum Trigger {
     FlagClicked,
+    /// NOT a safe_str
     Message(String), // TODO: VarId ?
     // KeyPressed(KeyId),
     // ThisSpriteClicked,
@@ -147,20 +150,17 @@ pub enum Trigger {
     // MessageReceive(EventId)
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+pub enum CallType {
+    Suspend,
+    NoSuspend,
+}
+
 macro_rules! int_key {
     ($name:ident) => {
         #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
         pub struct $name(pub usize);
     };
-}
-
-impl Display for Trigger {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Trigger::FlagClicked => "FlagClicked".to_string(),
-            Trigger::Message(name) => format!("Msg_{}", name)
-        })
-    }
 }
 
 // int_key!(BackdropId);

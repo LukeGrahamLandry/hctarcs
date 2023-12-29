@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use crate::ast::{BinOp, Expr, Func, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
-use crate::ast::Expr::UnknownExpr;
 use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject, StopOp};
 
 macro_rules! unwrap_input {
@@ -101,6 +100,7 @@ impl<'src> Parser<'src> {
             fields: self.fields.iter().map(|(_, v)| *v).collect(),
             name: self.target.name.clone(),
             is_stage: self.target.isStage,
+            is_singleton: true,
         }
     }
 
@@ -165,6 +165,18 @@ impl<'src> Parser<'src> {
                     }
                 }
             }),
+            "data_deletealloflist" => unwrap_field!(block, Field::List { LIST } => {
+                let (v, scope) = self.resolve(LIST);
+                self.project.expect_type(v, SType::ListPolymorphic);
+                Stmt::ListClear(scope, v)
+            }),
+            "control_for_each" => unwrap_field!(block, Field::Var { VARIABLE } => {
+                unwrap_input!(block, Input::SecretForLoop { SUBSTACK, VALUE } => {
+                    let (v, s) = self.resolve(VARIABLE);
+                    self.project.expect_type(v, SType::Number);
+                    Stmt::RepeatTimesCapture(self.parse_t(VALUE, SType::Number), self.parse_body(SUBSTACK.opt_block()), v, s)
+                })
+            }),
             "procedures_call" => unwrap_input!(block, Input::Named(args) => {
                 let proto = block.mutation.as_ref().unwrap();
                 let args: Vec<_> = proto.arg_ids().iter()
@@ -203,6 +215,10 @@ impl<'src> Parser<'src> {
                     Stmt::ListPush(scope, v, val)
                 })
             }),
+            "event_broadcastandwait" => unwrap_input!(block, Input::Broadcast { BROADCAST_INPUT } => {
+                let event = self.parse_t(BROADCAST_INPUT, SType::Str);
+                Stmt::BroadcastWait(event)
+            }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 let args = match proto {
                     &[] => vec![],
@@ -213,7 +229,7 @@ impl<'src> Parser<'src> {
                         vec![a, b]
                     }
 
-                    _ => vec![UnknownExpr(format!("call({:?})", proto))],
+                    _ => vec![Expr::UnknownExpr(format!("args::{:?}", proto))],
                 };
                 Stmt::BuiltinRuntimeCall(block.opcode.clone(), args)
             } else {
@@ -289,6 +305,9 @@ impl<'src> Parser<'src> {
         }
 
         match block.opcode.as_str() {
+            "operator_not" => unwrap_input!(block, Input::Un { OPERAND } => {
+                Expr::Un(UnOp::Not, Box::new(self.parse_t(OPERAND, SType::Bool)))
+            }),
             "operator_mathop" => unwrap_field!(block, Field::Op { OPERATOR } => {
                 if let Operand::Var(name, _) = OPERATOR {
                     let e = Box::new(self.parse_op_num(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
@@ -342,8 +361,11 @@ impl<'src> Parser<'src> {
             "operator_letter_of" => unwrap_input!(block, Input::CharStr { LETTER, STRING } => {
                 let index = Box::new(self.parse_t(LETTER, SType::Number));
                 let string = Box::new(self.parse_t(STRING, SType::Str));
-
                 Expr::StringGetIndex(string, index)
+            }),
+            "operator_join" => unwrap_input!(block, Input::StrPair { STRING1, STRING2 } => {
+                // Not expecting SType::Str for args because numbers coerce
+                Expr::Bin(BinOp::StrJoin, Box::new(self.parse_op_expr(STRING1)), Box::new(self.parse_op_expr(STRING2)))
             }),
             _ => Expr::BuiltinRuntimeGet(block.opcode.clone())  // TODO: should be checked
         }
@@ -371,11 +393,18 @@ impl<'src> Parser<'src> {
                         self.expect_type(rhs, SType::Number);
                         self.expect_type(lhs, SType::Number);
                     }
-                    BinOp::EQ => assert_eq!(t, SType::Bool),
+                    BinOp::EQ => {
+                        assert_eq!(t, SType::Bool);
+                    },
                     BinOp::And | BinOp::Or => {
                         assert_eq!(t, SType::Bool);
                         self.expect_type(rhs, SType::Bool);
                         self.expect_type(lhs, SType::Bool);
+                    }
+                    BinOp::StrJoin => {
+                        assert_eq!(t, SType::Str);
+                        self.expect_type(rhs, SType::Str);
+                        self.expect_type(lhs, SType::Str);
                     }
                 }
             }
@@ -407,30 +436,7 @@ impl<'src> Parser<'src> {
     }
 
     fn infer_type(&mut self, e: &Expr) -> Option<SType> {
-        match e {
-            Expr::GetField(v) | Expr::GetGlobal(v) | Expr::GetArgument(v)
-                => self.project.expected_types[v.0].clone(),
-            Expr::Bin(op, ..) => {
-                match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow => Some(SType::Number),
-                    BinOp::GT | BinOp::LT | BinOp::EQ | BinOp::And | BinOp::Or => Some(SType::Bool),
-                }
-            }
-            Expr::Un(op, _) =>  match op {
-                UnOp::Not => Some(SType::Bool),
-                UnOp::SuffixCall(_) => Some(SType::Number),
-            },
-            Expr::Literal(s) => match s.as_str() {  // TODO: really need to parse this in one place
-                "true" | "false" => Some(SType::Bool),
-                "Infinity" | "-Infinity" => Some(SType::Number),
-                "" => None,
-                _ => match s.parse::<f64>() {
-                    Ok(_) => Some(SType::Number),
-                    Err(_) => Some(SType::Str),
-                }
-            },
-            _ => None
-        }
+        infer_type(&self.project, e)
     }
 
     fn parse_trigger(&mut self, block: &Block) -> Trigger {
@@ -438,7 +444,7 @@ impl<'src> Parser<'src> {
             "event_whenflagclicked" => Trigger::FlagClicked,
             "event_whenbroadcastreceived" => unwrap_field!(block, Field::Msg { BROADCAST_OPTION } => {
                 let target = BROADCAST_OPTION.unwrap_var();
-                Trigger::Message(safe_str(target))
+                Trigger::Message(target.to_string())
             }),
             _ => todo!("Unknown trigger {}", block.opcode)
         }
@@ -511,7 +517,37 @@ impl Project {
             None => {
                 self.expected_types[v.0] = Some(t);
             }
-            Some(prev) => assert_eq!(prev, &t, "{}", self.var_names[v.0])
+            Some(prev) => if prev != &t {
+                println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0])
+            }
         }
+    }
+}
+
+pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
+    match e {
+        Expr::GetField(v) | Expr::GetGlobal(v) | Expr::GetArgument(v)
+        => project.expected_types[v.0].clone(),
+        Expr::Bin(op, ..) => {
+            match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow => Some(SType::Number),
+                BinOp::GT | BinOp::LT | BinOp::EQ | BinOp::And | BinOp::Or => Some(SType::Bool),
+                BinOp::StrJoin => Some(SType::Str),
+            }
+        }
+        Expr::Un(op, _) =>  match op {
+            UnOp::Not => Some(SType::Bool),
+            UnOp::SuffixCall(_) => Some(SType::Number),
+        },
+        Expr::Literal(s) => match s.as_str() {  // TODO: really need to parse this in one place
+            "true" | "false" => Some(SType::Bool),
+            "Infinity" | "-Infinity" => Some(SType::Number),
+            "" => None,
+            _ => match s.parse::<f64>() {
+                Ok(_) => Some(SType::Number),
+                Err(_) => Some(SType::Str),
+            }
+        },
+        _ => None
     }
 }

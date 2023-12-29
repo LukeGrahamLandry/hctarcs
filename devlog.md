@@ -1,5 +1,9 @@
 
-## type inference (Dec 28) 
+## async ideas (Dec 28)
+
+
+
+## lists & type inference (Dec 28) 
 
 tres actually uses different types, so I cant avoid anymore. 
 As a starting point, what if we assume thing are never actually polymorphic. 
@@ -14,6 +18,27 @@ Alas, tres heap list is polymorphic.
 The index field can be "last" or "random" which is weird. 
 - https://en.scratch-wiki.info/wiki/Item_()_of_()_(block)
 
+TODO: im being inconsistent. get/set list takes scope as an arg but get/set other var has two ast nodes.  
+      lists aren't expressions (which maybe is right since not first class in scratch).
+
+LetterOf seems like poor naming, its "take a subslice of one index of the string". 
+But sounds to me like its asking a contains question. lucky me, they have a different shape for bools. 
+
+Damn where on earth are they getting a control_for_each. Its fully not in the menu as an option but it clearly works. 
+Oh, okay there are just some secret magic blocks I guess. That's crazy man. 
+Also, strange naming its `for a in range(b): c` not `for a in b: c`
+- https://en.scratch-wiki.info/wiki/For_Each_()_in_()_(block)
+- https://en.scratch-wiki.info/wiki/Hidden_Blocks
+
+Seeing the comment `; Iterate in reverse so processes can be removed without interfering with the next iteration` 
+does not bode well for my borrow checker ;-;
+
+Sadly for my enum plants broadcast values can be a computed string. 
+Tho the handlers have to be a constant from the drop-down. 
+So I guess if you compute it, I just switch over it and crash if you commit a crime. 
+
+Since the program I care about rn only has one sprite, I can cheat at broadcast_and_wait
+
 ## contributing to the lisp one (Dec 28)
 
 Implicit locals: 
@@ -25,7 +50,7 @@ Is there anything that checks that you always assign to a local before you read 
 Damn git submodules suck ass, apparently. I just wanna test my thing! 
 - https://stackoverflow.com/questions/20929336/git-submodule-add-a-git-directory-is-found-locally-issue
 
-## Ideas
+## Ideas (Dec 27)
 
 Next test I want is https://scratch.mit.edu/projects/647528063/editor/
 Needs broadcasts, lists, and costumes stamp.
