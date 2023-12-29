@@ -52,6 +52,8 @@ pub enum Stmt {
     // Variables
     SetField(VarId, Expr),
     SetGlobal(VarId, Expr),
+    ListSet(Scope, VarId, Expr, Expr),
+    ListPush(Scope, VarId, Expr),
 
     // Other
     BuiltinRuntimeCall(String, Vec<Expr>),
@@ -72,6 +74,9 @@ pub enum Expr {
     GetField(VarId),
     GetGlobal(VarId),
     GetArgument(VarId),
+    ListGet(Scope, VarId, Box<Expr>),
+    ListLen(Scope, VarId),
+    StringGetIndex(Box<Expr>, Box<Expr>),
 
     BuiltinRuntimeGet(String),
     Literal(String),  // TODO: parse it in parser
@@ -89,10 +94,17 @@ pub enum BinOp {
     EQ,
     And,
     Or,
+    Pow,
     // StrJoin,
     // StrLetterOf,
     // StrContains,
     Random
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Scope {
+    Instance,
+    Global
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -107,8 +119,7 @@ pub enum SType {
     Number,
     Bool,
     Str,
-    ListOfNumber,
-    ListOfStr,
+    ListPolymorphic
 }
 
 // #[derive(Serialize, Deserialize, Debug, Clone)]

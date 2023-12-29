@@ -9,6 +9,10 @@ Set variable: infer value type and expect var type to be that.
 Increment variable: expect value and var to be number. 
 I'm treating the strings true and false as boolean literals which is wrong and should be fixed I guess. Have an opt pass that notices that idiom. 
 
+Alas, tres heap list is polymorphic. 
+
+The index field can be "last" or "random" which is weird. 
+- https://en.scratch-wiki.info/wiki/Item_()_of_()_(block)
 
 ## contributing to the lisp one (Dec 28)
 

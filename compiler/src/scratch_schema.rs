@@ -15,6 +15,7 @@ pub struct RawSprite {
     pub isStage: bool,
     pub name: String,
     pub variables: HashMap<String, Operand>,
+    pub lists: HashMap<String, Operand>,
     pub blocks: HashMap<String, Block>
 }
 
@@ -91,6 +92,20 @@ pub enum Input {
     Colour {
         COLOR: Operand,
     },
+    ListBoth {
+        INDEX: Operand,
+        ITEM: Operand,
+    },
+    ListItem {
+        ITEM: Operand,
+    },
+    ListIndex {
+        INDEX: Operand,
+    },
+    CharStr {
+        LETTER: Operand,
+        STRING: Operand,
+    },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty
     Named(HashMap<String, Operand>),
@@ -114,6 +129,9 @@ pub enum Field {
     Msg {
         BROADCAST_OPTION: Operand,
     },
+    List {
+        LIST: Operand,
+    },
     // TODO: How to match empty?
     Named(HashMap<String, Operand>),
 }
@@ -132,6 +150,7 @@ pub enum Operand {
     TwoNames(usize, String, String),
     Nothing(usize, Option<()>),
     NNSS(usize, (usize, String, String)),
+    List(String, Vec<()>),
     // Unknown(Value)
 }
 
@@ -167,6 +186,7 @@ impl Operand {
             Operand::Var(s, _) |
             Operand::ArgName(s, _) |
             Operand::VarF(s, _) |
+            Operand::List(s, _) |
             Operand::VarNum(s, _) |
             Operand::ArgRef(_, (_, s, _), _) => Some(s),
             Operand::NNSS(_, (_, s, _)) => Some(s),

@@ -94,3 +94,40 @@ pub fn dyn_rand(min: f64, max: f64) -> f64 {
         RNG.with(|rng| rng.borrow_mut().gen_range(min..max))
     }
 }
+
+// TODO: avoid this whenever possible
+#[derive(Clone, PartialEq)]
+pub enum NumOrStr {
+    Num(f64),
+    Str(String),
+}
+
+impl From<f64> for NumOrStr {
+    fn from(value: f64) -> Self {
+        NumOrStr::Num(value)
+    }
+}
+
+impl From<String> for NumOrStr {
+    fn from(value: String) -> Self {
+        NumOrStr::Str(value)
+    }
+}
+
+impl From<NumOrStr> for f64 {
+    fn from(value: NumOrStr) -> Self {
+        match value {
+            NumOrStr::Num(n) => n,
+            NumOrStr::Str(s) => todo!("Tried to convert {:?} to number.", s)
+        }
+    }
+}
+
+impl From<NumOrStr> for String {
+    fn from(value: NumOrStr) -> Self {
+        match value {
+            NumOrStr::Num(n) => todo!("Tried to convert {:?} to string.", n),
+            NumOrStr::Str(s) => s,
+        }
+    }
+}

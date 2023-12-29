@@ -1,7 +1,7 @@
 //! Converting a structure from scratch_schema to an AST.
 
 use std::collections::HashMap;
-use crate::ast::{BinOp, Expr, Func, Proc, Project, Sprite, Stmt, SType, Trigger, UnOp, VarId};
+use crate::ast::{BinOp, Expr, Func, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::ast::Expr::UnknownExpr;
 use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject, StopOp};
 
@@ -43,10 +43,13 @@ impl From<ScratchProject> for Project {
 }
 
 fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
-    target.variables.iter().map(| (_, v)| {
+    let mut expand = | (_, v): (&String, &Operand)| {
         let name = v.unwrap_var();
         (name.to_string(), proj.next_var(name))
-    }).collect()
+    };
+    let mut a: HashMap<String, VarId> = target.variables.iter().map(&mut expand).collect();
+    a.extend(target.lists.iter().map(&mut expand));
+    a
 }
 
 struct Parser<'src> {
@@ -137,20 +140,14 @@ impl<'src> Parser<'src> {
             "data_setvariableto" => unwrap_field!(block, Field::Var { VARIABLE } => {
                 let value = self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one());
                 let val_t = self.infer_type(&value);
-                match self.fields.get(VARIABLE.unwrap_var()) {
-                    Some(&v) => {
-                        if let Some(val_t) = val_t {
-                            self.project.expect_type(v, val_t);
-                        }
-                        Stmt::SetField(v, value)
-                    },
-                    None => {
-                        let v = *self.globals.get(VARIABLE.unwrap_var()).unwrap();
-                        if let Some(val_t) = val_t {
-                            self.project.expect_type(v, val_t);
-                        }
-                        Stmt::SetGlobal(v, value)
-                    }
+                let (v, scope) = self.resolve(VARIABLE);
+                if let Some(val_t) = val_t {
+                    self.project.expect_type(v, val_t);
+                }
+                println!("Set {:?} = {:?}", v, value);
+                match scope {
+                    Scope::Instance => Stmt::SetField(v, value),
+                    Scope::Global => Stmt::SetGlobal(v, value)
                 }
             }),
             "data_changevariableby" => unwrap_field!(block, Field::Var { VARIABLE } => {  // TODO: this could have a new ast node and use prettier +=
@@ -181,6 +178,31 @@ impl<'src> Parser<'src> {
 
                 Stmt::CallCustom(safe_str(proto.name()), args)
             }),
+            "data_replaceitemoflist" => unwrap_field!(block, Field::List { LIST } => {
+                unwrap_input!(block, Input::ListBoth { INDEX, ITEM } => {
+                    let (v, scope) = self.resolve(LIST);
+                    let mut i = self.parse_op_expr(INDEX);
+
+                    if let Expr::Literal(s) = &i {
+                        if s == "last" {
+                            i = Expr::Bin(BinOp::Sub, Box::new(Expr::ListLen(scope, v)), Box::new(Expr::Literal("1".into())));
+                        }
+                    }
+                    self.expect_type(&i, SType::Number);
+                    let val = self.parse_op_expr(ITEM);
+
+                    self.maybe_expect_list(v, &val);
+                    Stmt::ListSet(scope, v, i, val)
+                })
+            }),
+            "data_addtolist" => unwrap_field!(block, Field::List { LIST } => {
+                unwrap_input!(block, Input::ListItem { ITEM } => {
+                    let (v, scope) = self.resolve(LIST);
+                    let val = self.parse_op_expr(ITEM);
+                    self.maybe_expect_list(v, &val);
+                    Stmt::ListPush(scope, v, val)
+                })
+            }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 let args = match proto {
                     &[] => vec![],
@@ -197,6 +219,29 @@ impl<'src> Parser<'src> {
             } else {
                 Stmt::UnknownOpcode(block.opcode.clone())
             }
+        }
+    }
+
+    fn resolve(&mut self, name: &Operand) -> (VarId, Scope) {
+        match self.fields.get(name.unwrap_var()) {
+            Some(&v) => (v, Scope::Instance),
+            None => {
+                let v = *self.globals.get(name.unwrap_var()).unwrap();
+                (v, Scope::Instance)
+            }
+        }
+    }
+
+    fn maybe_expect_list(&mut self, list: VarId, item: &Expr) {
+        println!("expect list {:?} -> {}", item, self.project.var_names[list.0]);
+        let val_t = self.infer_type(&item);
+        self.project.expect_type(list, SType::ListPolymorphic);
+
+        if let Some(val_t) = val_t {
+            match val_t {
+                SType::Number | SType::Str | SType::Bool  => {}, // TODO: why are bools ending up here
+                SType::ListPolymorphic => panic!("Expected list item found {:?} {:?} for {}", val_t, item, self.project.var_names[list.0])
+            };
         }
     }
 
@@ -222,20 +267,41 @@ impl<'src> Parser<'src> {
         self.parse_expr(block)
     }
 
+    fn coerce_number(e: Expr) -> Expr {
+        match &e {
+            Expr::Literal(s) => if s == "" {
+                Expr::Literal("0.0".to_string())
+            } else {
+                e
+            }
+            _ => e
+        }
+    }
+
+    fn parse_op_num(&mut self, block: &Operand) -> Expr {
+        Parser::coerce_number(self.parse_op_expr(block))
+    }
+
     fn parse_expr(&mut self, block: &Block) -> Expr {
         if let Some(op) = bin_op(&block.opcode) {  // TODO: make sure of left/right ordering
             let (lhs, rhs) = block.inputs.as_ref().unwrap().unwrap_pair();
-            return Expr::Bin(op, Box::from(self.parse_op_expr(lhs)), Box::from(self.parse_op_expr(rhs)))
+            return Expr::Bin(op, Box::from(self.parse_op_num(lhs)), Box::from(self.parse_op_num(rhs)))
         }
 
         match block.opcode.as_str() {
             "operator_mathop" => unwrap_field!(block, Field::Op { OPERATOR } => {
                 if let Operand::Var(name, _) = OPERATOR {
+                    let e = Box::new(self.parse_op_num(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
+                    self.expect_type(&e, SType::Number);
+
+                    if name == "10 ^" {
+                        return Expr::Bin(BinOp::Pow, Box::new(Expr::Literal("10".into())), e);
+                    }
+
                     let op = match name.as_str() {  // TODO: sad allocation noises
                         "ceiling" => "ceil".to_string(),
                         "log" => "log10".to_string(), // TODO: make sure right base
                         "e ^" => "exp".to_string(),
-                        "10 ^" => todo!("10 ^ not suffix"),
                         "sin" | "cos" | "tan"
                             => format!("to_degrees().{}", name),
                         "asin" | "acos" | "atan"
@@ -243,16 +309,41 @@ impl<'src> Parser<'src> {
                         _ => name.to_string(),  // TODO: don't assume valid input
                     };
                     let op = UnOp::SuffixCall(op);
-                    let e = Box::new(self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
-                    self.expect_type(&e, SType::Number);
+
                     Expr::Un(op, e)
                 } else {
                     panic!("Expected operator_mathop[OPERATOR]==Var(..) found {:?}", OPERATOR)
                 }
             }),
+            "data_itemoflist" => unwrap_field!(block, Field::List { LIST } => {
+                unwrap_input!(block, Input::ListIndex { INDEX } => {
+                    let (v, scope) = self.resolve(LIST);
+                    let mut i = self.parse_op_expr(INDEX);
+
+                    if let Expr::Literal(s) = &i {
+                        if s == "last" {
+                            i = Expr::Bin(BinOp::Sub, Box::new(Expr::ListLen(scope, v)), Box::new(Expr::Literal("1".into())));
+                        }
+                    }
+                    self.expect_type(&i, SType::Number);
+                    self.project.expect_type(v, SType::ListPolymorphic);
+                    Expr::ListGet(scope, v, Box::new(i))
+                })
+            }),
+            "data_lengthoflist" => unwrap_field!(block, Field::List { LIST } => {
+                let (v, scope) = self.resolve(LIST);
+                self.project.expect_type(v, SType::ListPolymorphic);
+                Expr::ListLen(scope, v)
+            }),
             "argument_reporter_string_number" => unwrap_field!(block, Field::Val { VALUE } => {
                 let v = self.args_by_name.get(VALUE.unwrap_var()).unwrap();
                 Expr::GetArgument(*v)
+            }),
+            "operator_letter_of" => unwrap_input!(block, Input::CharStr { LETTER, STRING } => {
+                let index = Box::new(self.parse_t(LETTER, SType::Number));
+                let string = Box::new(self.parse_t(STRING, SType::Str));
+
+                Expr::StringGetIndex(string, index)
             }),
             _ => Expr::BuiltinRuntimeGet(block.opcode.clone())  // TODO: should be checked
         }
@@ -270,7 +361,7 @@ impl<'src> Parser<'src> {
                 => self.project.expect_type(*v, t),
             Expr::Bin(op, rhs, lhs) => {
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random => {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow => {
                         assert_eq!(t, SType::Number);
                         self.expect_type(rhs, SType::Number);
                         self.expect_type(lhs, SType::Number);
@@ -304,7 +395,7 @@ impl<'src> Parser<'src> {
                 match s.as_str() {  // TODO: really need to parse this in one place
                     "true" | "false" => assert_eq!(t, SType::Bool),
                     "Infinity" | "-Infinity" => assert_eq!(t, SType::Number),
-                    "" => assert_eq!(t, SType::Number), // TODO: permit the empty string
+                    "" => assert!(t == SType::Number || t == SType::Str),
                     _ => match s.parse::<f64>() {
                         Ok(_) => assert_eq!(t, SType::Number),
                         Err(_) => assert_eq!(t, SType::Str),
@@ -321,7 +412,7 @@ impl<'src> Parser<'src> {
                 => self.project.expected_types[v.0].clone(),
             Expr::Bin(op, ..) => {
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random => Some(SType::Number),
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow => Some(SType::Number),
                     BinOp::GT | BinOp::LT | BinOp::EQ | BinOp::And | BinOp::Or => Some(SType::Bool),
                 }
             }
@@ -329,15 +420,15 @@ impl<'src> Parser<'src> {
                 UnOp::Not => Some(SType::Bool),
                 UnOp::SuffixCall(_) => Some(SType::Number),
             },
-            Expr::Literal(s) => Some(match s.as_str() {  // TODO: really need to parse this in one place
-                "true" | "false" => SType::Bool,
-                "Infinity" | "-Infinity" => SType::Number,
-                "" => SType::Number, // TODO: permit the empty string
+            Expr::Literal(s) => match s.as_str() {  // TODO: really need to parse this in one place
+                "true" | "false" => Some(SType::Bool),
+                "Infinity" | "-Infinity" => Some(SType::Number),
+                "" => None,
                 _ => match s.parse::<f64>() {
-                    Ok(_) => SType::Number,
-                    Err(_) => SType::Str,
+                    Ok(_) => Some(SType::Number),
+                    Err(_) => Some(SType::Str),
                 }
-            }),
+            },
             _ => None
         }
     }
@@ -420,7 +511,7 @@ impl Project {
             None => {
                 self.expected_types[v.0] = Some(t);
             }
-            Some(prev) => assert_eq!(prev, &t)
+            Some(prev) => assert_eq!(prev, &t, "{}", self.var_names[v.0])
         }
     }
 }

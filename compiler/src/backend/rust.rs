@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::io::stderr;
-use crate::ast::{BinOp, Expr, Project, Sprite, Stmt, SType, Trigger, UnOp, VarId};
+use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 
 pub fn emit_rust(project: &Project) -> String {
     let msgs: HashSet<Trigger> = project.targets.
@@ -61,6 +61,7 @@ const HEADER: &str = r#"
 #![allow(unused_variables)]
 use runtime::sprite::{SpriteBase, Sprite};
 use runtime::{builtins, World};
+use runtime::builtins::NumOrStr;
 "#;
 
 
@@ -133,6 +134,9 @@ impl Sprite<Msg, Stage> for {0} {{
             Stmt::CallCustom(name, args) => {
                 format!("self.{name}(sprite, globals, {});\n", self.emit_args(args))
             }
+            Stmt::ListSet(s, v, i, item) => format!("{}[{} as usize] = {}.into();\n", self.ref_var(*s, *v), self.emit_expr(i), self.emit_expr(item)),  // TODO: what happens on OOB?
+            Stmt::ListPush(s, v, item) => format!("{}.push({}.into());\n", self.ref_var(*s, *v), self.emit_expr(item)),  // TODO: what happens on OOB?
+
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         }
     }
@@ -180,8 +184,8 @@ impl Sprite<Msg, Stage> for {0} {{
                     UnOp::SuffixCall(name) => format!("({}.{name}())", self.emit_expr(e)),
                 }
             }
-            Expr::GetField(v) => format!("self.{}", self.project.var_names[v.0]),
-            Expr::GetGlobal(v) => format!("globals.{}", self.project.var_names[v.0]),
+            Expr::GetField(v) => self.ref_var(Scope::Instance, *v),
+            Expr::GetGlobal(v) => self.ref_var(Scope::Global, *v),
             Expr::GetArgument(v) => self.project.var_names[v.0].clone(),
             Expr::Literal(s) => {
                 match s.as_str() {  // TODO: proper strings and bools. HACK!
@@ -192,16 +196,32 @@ impl Sprite<Msg, Stage> for {0} {{
                     _ => {
                         match s.parse::<f64>() {
                             Ok(v) => format!("({}f64)", v),
-                            Err(_) => format!("\"{}\"", s.escape_default()),
+                            Err(_) => format!("\"{}\".to_string()", s.escape_default()),  // TODO: no alloc. (use cow everywhere?)
                         }
 
                     }  // Brackets because I'm not sure of precedence for negative literals
                 }
             },
+            Expr::ListLen(s, v) => format!("({}.len() as f64)", self.ref_var(*s, *v)),
+            Expr::ListGet(s, v, i) => format!("{}[{} as usize].into()", self.ref_var(*s, *v), self.emit_expr(i)),  // TODO: what happens on OOB?
             Expr::BuiltinRuntimeGet(name) => format!("sprite.{}()", name),
+            Expr::StringGetIndex(string, index) => {
+                // TODO: is scratch unicode aware? This could be faster if its just on bytes.
+                // TODO: don't evaluate index twice!
+                format!("{0}[({1} as usize)..({1} as usize)+1].to_string()", self.emit_expr(string), self.emit_expr(index))
+            }
             _ => format!("todo!(r#\"{:?}\"#)", expr)
         }
     }
+
+    fn ref_var(&mut self, scope: Scope, v: VarId) -> String {
+        let a = "sdas".to_string()[1..2].to_string();
+        match scope {
+            Scope::Instance => format!("self.{}", self.project.var_names[v.0]),
+            Scope::Global => format!("globals.{}", self.project.var_names[v.0]),
+        }
+    }
+
 
     fn inferred_type_name(&self, v: VarId) -> &'static str {
         match &self.project.expected_types[v.0] {
@@ -214,7 +234,7 @@ impl Sprite<Msg, Stage> for {0} {{
 fn type_name(t: SType) -> &'static str {
     match t {
         SType::Number => "f64",
-        SType::ListOfNumber => "Vec<f64>",
+        SType::ListPolymorphic => "Vec<NumOrStr>",
         SType::Bool => "bool",
         SType::Str => "String",
     }
