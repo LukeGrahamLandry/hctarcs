@@ -1,11 +1,50 @@
 
-## running tres
+## try running tres (Dec 29)
 
 Cheating and just printing name of costume if it's a char and ignoring pen stamp because that's how they print. 
 
 Now it actually runs and prints: Panic! resolve-path: Could not resolve path `/bin/shell`
-(which for clarity is a fake os panic not a rust panic)
+(which, for clarity, is a fake os panic not a rust panic).
+Problem is `Str::from("/") == path.get_index(self.local_id_649_i)` is never true because I derived eq on my fancy new string type.
 
+Fixed that and now real panic (but later): `Tried to send invalid computed message: Owned("_switch_heap_deallocate_Vec")`
+Which I guess is just that scratch silently ignores invalid computed event names and not every type registers a destructor listener. 
+
+Ok, now fake panic `Panic! interp-step: ip 13 is out of bounds`. 
+Fair enough, on real scratch it seems to only get to 7 without input. 
+Seems its never actually dispatching a switch-interp event. 
+Again, I think the problem is `self.local_id_454_curr_token.clone().as_num() == (0.0f64 + self.local_id_454_curr_token.clone().as_num())`
+Which is supposed to be checking if it's a number or string but perhaps confused my type inference.
+If I manually replace that condition with `matches!(self.local_id_454_curr_token, NumOrStr::Num(_))`
+the interp works correctly on `"hi" println` but on `1 sin println` it says: Panic! interp-step: unknown instruction `1` 
+Manually replacing the condition with 
+```
+{match &self.local_id_454_curr_token {
+    NumOrStr::Num(_) => true,
+    NumOrStr::Str(s) => s.as_ref().parse::<f64>().is_ok(),
+    NumOrStr::Bool(_) | NumOrStr::Empty => false,
+}}
+```
+runs the sin example but always returns 0 which makes sense if it's treating my string as 0.
+
+I'm very excited to port my postscript mandelbrot to this and see if mine is faster than turbowarp. 
+Tho seems there's no `roll` so maybe can use a vec instead of the stack, so you get less painful random access. 
+Learning loops: `0 1 2 3 4 5 6 :loop dup println 0 > ":loop" jump-if` prints those numbers. 
+But that doesn't work on the version on scratch website? confusing. 
+
+Pretty sure I decided all strings coerce to zero because `"1"` did but that's probably actually the string with the quotes. 
+I can have optimisation that recognises the idiom of `(x == (0 + x)) === x.is_num()` and just call a runtime method. 
+It's cool that I can emit code that shows intent more clearly (as long as there's no possible other interpretation for that expression). 
+For now, it's a hack because I only recognise that specific shape of tree and miss-compile if I don't notice. 
+TODO: test flag that enables and disables opts like that, so I can have little sanity checks that they behave the same. 
+
+TODO: test flag that reverses iteration order. 
+TODO: little scratch programs that assert sanity checks. 
+
+Mistakes I made:
+- missing else branch on if
+- unit statement
+- expression statement
 
 ## argument type inference (Dec 29)
 

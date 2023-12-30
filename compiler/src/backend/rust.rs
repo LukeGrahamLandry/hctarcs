@@ -39,14 +39,15 @@ pub fn emit_rust(project: &Project) -> String {
 fn main() {{
     World::run_program(Stage::default(), vec![{sprites}])
 }}
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 enum Msg {{
+    InvalidComputedMessage,
     {msg_fields}
 }}
 fn msg_of(value: Str) -> Msg {{
         match value.as_ref() {{
             {msg_names}
-            _ => panic!("Tried to send invalid computed message: {{value:?}}"),
+            _ => Msg::InvalidComputedMessage, // Silently ignore
         }}
 }}
 
@@ -91,11 +92,10 @@ const HEADER: &str = r#"
 //! This file is @generated from a Scratch project using github.com/LukeGrahamLandry/hctarcs
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
-#![allow(unused_parens)]
-#![allow(unused_variables)]
+#![allow(unused)]
 use runtime::sprite::{SpriteBase, Sprite, Trigger};
 use runtime::{builtins, World};
-use runtime::poly::{NumOrStr, Str};
+use runtime::poly::{Poly, Str, List};
 "#;
 
 
@@ -186,14 +186,12 @@ impl Sprite<Msg, Stage> for {0} {{
                 let list = self.ref_var(*s, *v, true);
                 let index = self.emit_expr(i, Some(SType::Number));
                 let item = self.emit_expr(item, Some(SType::Poly));
-                // TODO: underflow
-                format!("let index = {index} as usize - 1; let item = {item}; {list}[index] = item;\n")
-            },  // TODO: what happens on OOB?
+                format!("let index = {index}; let item = {item}; {list}.replace(index, item);\n")
+            },
             Stmt::ListPush(s, v, item) => format!("{}.push({});\n", self.ref_var(*s, *v, false), self.emit_expr(item, Some(SType::Poly))),
             Stmt::ListClear(s, v) => format!("{}.clear();\n", self.ref_var(*s, *v, true)),
             Stmt::ListRemoveIndex(s, v, i) =>
-                // TODO: underflow
-                format!("{}.remove({} as usize - 1);\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
+                format!("{}.remove({});\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
             Stmt::BroadcastWait(name) => {
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
                 // TODO: multiple receivers HACK
@@ -263,8 +261,8 @@ impl Sprite<Msg, Stage> for {0} {{
                                 Some(lhs_t)
                             } else {
                                 match (&lhs_t, &rhs_t) {
-                                    (&SType::Number, &SType::Str) | (&SType::Str, &SType::Number) => Some(SType::Number),
-                                    (&SType::Poly, other) | (other, &SType::Poly) => Some(other.clone()),
+                                    (&SType::Number, &SType::Str) | (&SType::Str, &SType::Number) => Some(SType::Poly),
+                                    (&SType::Poly, other) | (other, &SType::Poly) => Some(SType::Poly),  // TODO: can do better
                                     _ => panic!("Need rule for {:?} == {:?}", lhs_t, rhs_t)
                                 }
                             }
@@ -315,6 +313,10 @@ impl Sprite<Msg, Stage> for {0} {{
                 let e = self.project.var_names[v.0].clone();
                 self.coerce_var(*v, e, &t)
             },
+            Expr::IsNum(e) => {
+                let e = self.emit_expr(e, Some(SType::Poly));
+                self.coerce(&SType::Bool, format!("{e}.is_num()"), &t)
+            }
             Expr::Literal(s) => {
                 let (value, found) = match s.as_str() {
                     "true" | "false" => (s.parse::<bool>().unwrap().to_string(), SType::Bool),
@@ -332,14 +334,13 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce(&found, value, &t)
             },
             Expr::ListLen(s, v) => {
-                let e = format!("({}.len() as f64)", self.ref_var(*s, *v, true));
+                let e = format!("{}.len()", self.ref_var(*s, *v, true));
                 self.coerce(&SType::Number, e, &t)
             },
             Expr::ListGet(s, v, i) => {
-                // TODO: underflow
-                let value = format!("{}[{} as usize - 1]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
+                let value = format!("{}[{}]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
                 self.coerce(&SType::Poly, value, &t)
-            },  // TODO: what happens on OOB?
+            },
             Expr::BuiltinRuntimeGet(name) => {
                 let found = infer_type(self.project, expr).unwrap_or_else(|| panic!("Failed to infer return type of BuiltinRuntimeGet {name}"));
                 self.coerce(&found, format!("sprite.{}()", name), &t)
@@ -349,11 +350,11 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce(&SType::Str, value, &t)
             }
             Expr::Empty => match t {
-                None | Some(SType::Poly) => "NumOrStr::Empty",
+                None | Some(SType::Poly) => "Poly::Empty",
                 Some(SType::Number) => "0.0f64",
                 Some(SType::Str) => "Str::from(\"\")",
                 Some(SType::Bool) => "false",
-                Some(SType::ListPoly) => panic!("Null list."),
+                Some(SType::ListPoly) => unreachable!("Null list."),
             }.to_string(),
             _ => format!("todo!(r#\"{:?}\"#)", expr)
         }
@@ -368,16 +369,20 @@ impl Sprite<Msg, Stage> for {0} {{
         let want = want.as_ref().unwrap_or(&SType::Poly);
         if want == found {
             return if want == &SType::Poly {
+                // TODO: rethink stuff to avoid redundant clones (im sure rustc would fix but looks ugly).
+                //       but i dont want to actually change behaviour based on hackily analyzing the generated string.
+                //       problem is we dont distinguish between direct var reads and newly computed things
+                // assert!(!value.ends_with(".clone()"));
                 format!("{value}.clone()")
             } else {
                 value
             }
         }
         if want == &SType::Poly {
-            assert!(!value.starts_with("NumOrStr::from"));
+            assert!(!value.starts_with("Poly::from"));
             return match found {
-                &SType::Number | &SType::Bool => format!("NumOrStr::from({value})"),
-                &SType::Str => format!("NumOrStr::from({value}.clone())"),
+                &SType::Number | &SType::Bool => format!("Poly::from({value})"),
+                &SType::Str => format!("Poly::from({value}.clone())"),
                 _ => {
                     //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
                     value
@@ -386,6 +391,7 @@ impl Sprite<Msg, Stage> for {0} {{
         } else if found == &SType::Poly {
             assert!(!value.ends_with(".as_num()"));
             assert!(!value.ends_with(".as_str()"));
+            assert!(!value.ends_with(".as_bool()"));
             return match want {
                 &SType::Number => format!("{value}.as_num()"),
                 &SType::Str => format!("{value}.as_str()"),
@@ -397,11 +403,11 @@ impl Sprite<Msg, Stage> for {0} {{
             }
         } else if want == &SType::Str && found == &SType::Number {
             // TODO: this is only valid in string concat, otherwise probably an inference bug?
-            //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
-            return format!("NumOrStr::from({value}).as_str()")
+            return format!("Poly::from({value}).as_str()")
+        } else if want == &SType::Number && found == &SType::Str {
+            panic!("Poly::from({value}).as_num()");
         } else {
-            //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
-            return value
+            panic!("coerce want {:?} but found {:?} in {value}", want, found);
         }
     }
 
@@ -422,7 +428,7 @@ impl Sprite<Msg, Stage> for {0} {{
 
     fn inferred_type_name(&self, v: VarId) -> &'static str {
         match &self.project.expected_types[v.0] {
-            None => "NumOrStr /* guess */",
+            None => "Poly /* guess */",
             Some(t) => type_name(t.clone()),
         }
     }
@@ -431,9 +437,9 @@ impl Sprite<Msg, Stage> for {0} {{
 fn type_name(t: SType) -> &'static str {
     match t {
         SType::Number => "f64",
-        SType::ListPoly => "Vec<NumOrStr>",
+        SType::ListPoly => "List<Poly>",
         SType::Bool => "bool",
         SType::Str => "Str",
-        SType::Poly => "NumOrStr"
+        SType::Poly => "Poly"
     }
 }

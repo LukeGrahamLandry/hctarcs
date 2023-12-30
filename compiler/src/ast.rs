@@ -83,6 +83,7 @@ pub enum Expr {
     ListLen(Scope, VarId),
     StringGetIndex(Box<Expr>, Box<Expr>),
     Empty,
+    IsNum(Box<Expr>),
 
     BuiltinRuntimeGet(String),
     Literal(String),  // TODO: parse it in parser

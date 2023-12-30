@@ -7,6 +7,7 @@ exclude = [
     "vendor/scratch-compiler",  # For tests
     "target/scratch_out",  # Generated
     "target/scratch_out_tres",  # Generated
+    "target/scratch_out_sanity",  # Generated
 ]
 resolver = "2"
 

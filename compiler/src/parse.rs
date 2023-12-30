@@ -412,7 +412,25 @@ impl<'src> Parser<'src> {
     fn parse_expr(&mut self, block: &Block) -> Expr {
         if let Some(op) = bin_op(&block.opcode) {  // TODO: make sure of left/right ordering
             let (lhs, rhs) = block.inputs.as_ref().unwrap().unwrap_pair();
-            let expr = Expr::Bin(op, Box::from(self.parse_op_num(lhs)), Box::from(self.parse_op_num(rhs)));
+            let lhs = Box::from(self.parse_op_num(lhs));
+            let rhs = Box::from(self.parse_op_num(rhs));
+
+            let mut expr = Expr::Bin(op.clone(), lhs.clone(), rhs.clone());
+
+            // TODO: HACK!!!!
+            if op == BinOp::EQ {
+                if let Some(left) = get_read_var(&lhs) {
+                    if let Expr::Bin(BinOp::Add, a, b) = rhs.as_ref() {
+                        if let Some(right) = get_read_var(b) {
+                            if matches!(a.as_ref(), Expr::Empty) && left == right {
+                                expr = Expr::IsNum(lhs);
+                                println!("IsNum {expr:?}");
+                            }
+                        }
+                    }
+                }
+            }
+
             // TODO: this is a bit silly. infer_type knows the output types and expect_type knows the input types and i dont want to be redundant.
             let out_t = infer_type(self.project, &expr);
             if let Some(out_t) = out_t {
@@ -442,7 +460,7 @@ impl<'src> Parser<'src> {
                         "log" => "log10".to_string(), // TODO: make sure right base
                         "e ^" => "exp".to_string(),
                         "sin" | "cos" | "tan"
-                            => format!("to_degrees().{}", name),
+                            => format!("to_radians().{}", name),
                         "asin" | "acos" | "atan"
                             => format!("{}().to_degrees", name),
                         _ => name.to_string(),  // TODO: don't assume valid input
@@ -541,7 +559,7 @@ pub fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
         "pen_penUp" | "pen_stamp" | "looks_hide" | "pen_clear" | "pen_penDown" | "sensing_askandwait" /* TODO: this will be async */
             => Some(&[]),
         "motion_gotoxy" => Some(&[SType::Number, SType::Number]),
-        "looks_switchcostumeto" => Some(&[SType::Str]),
+        "looks_switchcostumeto" | "looks_say" => Some(&[SType::Str]),
         _ => None
     }
 }
@@ -590,6 +608,7 @@ impl Project {
                 self.expected_types[v.0] = Some(t);
             }
             Some(prev) => if !types_match(prev, &t) {
+                // TODO: what happens if someone else already inferred their type based on our old incorrect guess? maybe it just works out.
                 //println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0]);
                 self.expected_types[v.0] = Some(SType::Poly);
             }
@@ -721,3 +740,11 @@ fn expect_type(project: &mut Project, e: &Expr, t: SType) {
         _ => {}
     }
 }
+
+fn get_read_var(expr: &Expr) -> Option<VarId> {
+    match expr {
+        Expr::GetField(v) | Expr::GetGlobal(v) | Expr::GetArgument(v) => Some(*v),
+        _ => None
+    }
+}
+

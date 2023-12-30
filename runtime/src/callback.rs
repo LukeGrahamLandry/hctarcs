@@ -1,6 +1,7 @@
 //! DIY shitty async runtime.
 //! The idea is each stack of blocks will be split into many functions, each ending in an await point.
 //! UNUSED thus far
+#![allow(unused)]
 use std::any::Any;
 use crate::sprite::{Sprite, SpriteBase};
 

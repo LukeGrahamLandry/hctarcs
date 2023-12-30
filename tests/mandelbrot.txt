@@ -1,0 +1,36 @@
+#define ignore(s)
+ignore(WIP UNUSED thus far)
+
+#define max_steps() 40
+#define scale() 150
+#define x_shift() 0 310 - scale /
+#define y_shift() 0 150 - scale /
+
+ignore(test loop)
+ignore(0 1 2 3 4 5 6 :loop dup println 0 > ":loop" jump-if)
+
+vec-new
+5 vec-push
+
+:nextpixel
+
+dup 1 vec-at ignore(vec val)
+swap dup rot ignore(vec vec val)
+1 +
+!
+ignore(vec)
+
+1 vec-at
+1 <
+
+":yes" ":no" jump-if
+
+:yes
+"A" print
+":nextpixel" jump
+
+:no
+"-" print
+":done" jump
+
+:done

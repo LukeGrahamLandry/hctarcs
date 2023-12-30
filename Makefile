@@ -10,4 +10,11 @@ web_dist:
 	cp $(WASM_PATH)/compiler.wasm $(WEB_DIST_PATH)/$(WASM_PATH)/compiler.wasm
 	cp index.html $(WEB_DIST_PATH)/index.html
 
-.PHONY: release_web
+target/sanity/project.json: tests/sanity.scratch
+	./gentests.sh
+
+test: target/sanity/project.json
+	cargo run --bin compiler
+	cd target/scratch_out_sanity && cargo run
+
+.PHONY: release_web test

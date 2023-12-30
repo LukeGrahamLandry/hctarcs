@@ -1,9 +1,9 @@
 #![allow(non_snake_case)]  // TODO: compiler could fix the names for me
 
-use std::borrow::Cow;
 use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
+use std::io::{stdout, Write};
 use crate::poly::Str;
 use crate::sprite::{Line, SpriteBase};
 
@@ -38,6 +38,7 @@ impl SpriteBase {
         let old = self.pos();
         self.y = (self.y + dy).clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
         self.draw(old);
+        println!();  // TODO: hack for line break tres
     }
 
     pub fn motion_setx(&mut self, x: f64) {
@@ -84,14 +85,17 @@ impl SpriteBase {
         println!("pen_clear")
     }
 
-    pub fn looks_setsizeto(&self, size: f64) {
+    pub fn looks_setsizeto(&self, _size: f64) {
         println!("looks_setsizeto")
     }
 
     // TODO
     pub fn looks_switchcostumeto(&self, costume: Str) {
         match costume {
-            Str::Char(c) => print!("{c}"),
+            Str::Char(c) => {
+                print!("{c}");
+                stdout().flush().unwrap();
+            },
             Str::Const(_) | Str::Owned(_) => {},
         }
     }
@@ -101,6 +105,10 @@ impl SpriteBase {
         let mut line = String::new();
         std::io::stdin().read_line(&mut line).unwrap();
         self.last_answer = line;  // TODO: trim new-line?
+    }
+
+    pub fn looks_say(&self, msg: Str) {
+        println!("[SAY] {msg:?}")
     }
 
     fn pos(&self) -> (f64, f64) {

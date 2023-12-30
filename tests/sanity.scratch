@@ -1,0 +1,110 @@
+; Run this in real Scratch when adding new tests to make sure they're correct. 
+; Don't forget to check the box to display fail-msgs since stop-all ends the say block. 
+; This file also documents some known miss-compilations, uncomment them if fixed. 
+
+(sprite "main"
+  (variables ignore a count-tests)  ; TODO: how to have an empty block 
+  (lists fail-msgs lst)
+  (costumes "blank" "assets/blank.png")
+
+  (proc (cases)
+    (eq 1 1 "int comp")
+    (ne 1 2 "not int comp")
+    (ne "" 0 "null comp indirect")
+    ; TODO: fix miss-compile
+    ; (ne (= "" 0) true "null comp inline")
+    ; (ne (= 0 "") true "null comp inline")
+    (eq "a" "a" "str comp")
+    (ne "a" "b" "str comp")
+
+    ; (to-num a) === (0 + a) but you cant write that manually or scratch-compiler removes because it thinks redundant 
+
+    (:= a "1")
+    (eq a "1" "var eq")
+    (eq a 1 "var eq coerce")
+    (eq (= a (to-num a)) true "is num left")
+    (eq (= (to-num a) a) true "is num right")
+    (eq (to-num a) a "is num indirect")
+    (eq (= 0 (to-num a)) false "num not 0")
+
+    (:= a "a")
+    (eq a "a" "var eq")
+    (eq (= a (to-num a)) false "not num left")
+    ; TODO: fix miss-compile
+    ; (eq (= (to-num a) a) false "not num right")
+    ; (ne (to-num a) a "not num indirect")
+    (eq (= 0 (to-num a)) true "coerce any to 0")
+
+    (eq (length lst) 0 "start empty")
+    (append lst "c")
+    (append lst 5)
+    (append lst true)
+    (eq (length lst) 3 "pushed poly")
+    (replace lst 4 "nope")
+    (eq (length lst) 3 "no replace grow")
+    (eq (!! lst 1) "c" "1st")
+    (eq (!! lst 2) 5 "2nd")
+    (eq (!! lst 3) true "3rd")
+    (delete-all lst)
+    (eq (length lst) 0 "cleared")
+
+    ; scratch-compiler does basic constant folding so use a level of indirection to trick it into actually testing my thing. 
+    (:= a 90)
+    (eq (sin a) 1 "sin degrees")
+    ; (eq (cos a) 0 "cos degrees") ; TODO: need epsilon for testing float math 
+    (:= a 1)
+    (eq (asin a) 90 "asin degrees")
+    (eq (acos a) 0 "cos degrees")
+
+    (eq "ab" (++ "a" "b") "str concat")
+    (eq "a" (char-at "ab" 1) "str letter")
+    (eq "b" (char-at (++ "a" "b") 2) "str letter")
+    (eq "ab" (++ (char-at "ab" 1) (char-at "ab" 2)) "str letter concat")
+    (ne (char-at "ab" 2) (char-at "ab" 1) "not str letter")
+
+    ; TODO: fix runtime oob handling
+    ; (eq "" (char-at "ab" 5) "str letter oob")
+    ; (delete-all lst)
+    ; (eq "" (!! lst 5) "list oob")
+
+    )
+
+  (proc (when-flag-clicked)
+    (:= count-tests 0)
+    (delete-all fail-msgs)
+    (cases)
+    (failed (++ "Ran " count-tests " tests and failed " (length fail-msgs)))
+    (stop-all)
+    )
+
+  (proc (eq a b msg)
+    (:= count-tests (+ count-tests 1))
+    (if (or (not (= a b)) (not (= b a))) ; TODO: assert commutative
+      (failed (++ "Failed " msg ": Expected (" a ") == (" b ")"))
+      (:= ignore 0)
+      )
+    )
+
+  (proc (ne a b msg)
+    (:= count-tests (+ count-tests 1))
+    (if (or (= a b) (= b a)) ; TODO: assert commutative
+      (failed (++ "Failed " msg ": Expected (" a ") != (" b ")"))
+      (:= ignore 0)
+      )
+    )
+  
+  (proc (failed msg)
+    (append fail-msgs msg)
+    (say msg)
+  )
+
+
+  (proc (check-fails)
+    (if (not (= (length fail-msgs) 0))
+      (stop-all)
+      (:= ignore 0))
+    )
+)
+
+(sprite "Stage"
+  (costumes "backdrop" "assets/blank.png"))

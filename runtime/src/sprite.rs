@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 #[derive(Clone, Default, Debug)]
 pub struct SpriteBase {
-    pub(crate) uid: usize,  // TODO: increment on each clone for safety checking callback targets
+    pub(crate) _uid: usize,  // TODO: increment on each clone for safety checking callback targets
     pub x: f64,
     pub y: f64,
     pub direction: f64,

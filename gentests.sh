@@ -4,7 +4,7 @@ cargo build --release
 cd ../.. || exit
 
 build_vendor() {
-  echo "=== Building $1 ==="
+  echo "=== Build Vendor $1 ==="
   cd "vendor/$1" || exit
   ../scratch-compiler/target/release/scratch-compiler src/main.scratch || exit
   cd ../.. || exit
@@ -14,8 +14,23 @@ build_vendor() {
   python -m json.tool "target/$1/project.json" > temp
   cat temp > "target/$1/project.json"
   rm temp
-  rm "target/$1.sb3"
+  # rm "target/$1.sb3"
 }
+
+build_test() {
+  echo "=== Build Test $1 ==="
+    cd "tests" || exit
+    ../vendor/scratch-compiler/target/release/scratch-compiler "$1.scratch" || exit
+    cd .. || exit
+    mv "tests/project.sb3" "target/$1.sb3" || exit
+
+    yes | unzip "target/$1.sb3" -d "target/$1" || exit
+    python -m json.tool "target/$1/project.json" > temp
+    cat temp > "target/$1/project.json"
+    rm temp
+}
+
+build_test "sanity"
 
 build_vendor "linrays"
 

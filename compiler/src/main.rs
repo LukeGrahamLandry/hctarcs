@@ -8,7 +8,10 @@ use compiler::scratch_schema::parse;
 fn main() {
     let linrays = compile("target/linrays", "target/scratch_out");
     compile("target/tres", "target/scratch_out_tres");
-    assert_eq!(linrays.matches("NumOrStr").count(), 1, "You broke type inference.");
+    assert_eq!(linrays.matches("Poly").count(), 1, "You broke type inference.");
+
+    compile("target/sanity", "target/scratch_out_sanity");
+    // TODO: assert that passes
 }
 
 fn compile(input: &str, output: &str) -> String{
@@ -23,15 +26,15 @@ fn compile(input: &str, output: &str) -> String{
     fs::write(format!("{output}/src/main.rs"), &result).unwrap();
     fs::write(format!("{output}/Cargo.toml"), CARGO_TOML).unwrap();
 
-    println!("[INFO] {} Polymorphic Type Annotations", result.matches(": NumOrStr").count());
-    println!("[INFO] {} Polymorphic Constructor Calls", result.matches("NumOrStr::from").count());
+    println!("[INFO] {} Polymorphic Type Annotations", result.matches(": Poly").count());
+    println!("[INFO] {} Polymorphic Constructor Calls", result.matches("Poly::from").count());
 
     // Note: Starting a new process hangs forever when running in RustRover's profiler???
     println!("Running cargo fmt...");
     assert!(Command::new("cargo").arg("fmt").current_dir(output).status().unwrap().success());
     println!("Running cargo check...");
     assert!(Command::new("cargo").arg("check").current_dir(output).output().unwrap().status.success());
-    assert_eq!(result.matches("NumOrStr::from(NumOrStr::from").count(), 0, "redundant NumOrStr construct");
+    assert_eq!(result.matches("Poly::from(Poly::from").count(), 0, "redundant Poly construct");
 
     // TODO
     // assert_eq!(result.matches("Str::from(Str::from").count(), 0, "redundant Str construct");
