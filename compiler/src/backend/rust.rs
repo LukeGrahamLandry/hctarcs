@@ -43,10 +43,10 @@ fn main() {{
 enum Msg {{
     {msg_fields}
 }}
-fn msg_of(value: Cow<str>) -> Msg {{
+fn msg_of(value: Str) -> Msg {{
         match value.as_ref() {{
             {msg_names}
-            _ => panic!("Tried to send invalid computed message: {{value}}"),
+            _ => panic!("Tried to send invalid computed message: {{value:?}}"),
         }}
 }}
 
@@ -95,8 +95,7 @@ const HEADER: &str = r#"
 #![allow(unused_variables)]
 use runtime::sprite::{SpriteBase, Sprite, Trigger};
 use runtime::{builtins, World};
-use runtime::builtins::NumOrStr;
-use std::borrow::Cow;
+use runtime::poly::{NumOrStr, Str};
 "#;
 
 
@@ -177,7 +176,7 @@ impl Sprite<Msg, Stage> for {0} {{
                 // There are no real locals so can't have name conflicts
                 let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly));
                 let iter_expr = self.coerce(&SType::Number, "i as f64".to_string(), &var_ty);
-                format!("for i in 0..({} as usize) {{\n{} = {iter_expr};\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.ref_var(*s, *v, true), self.emit_block(body))
+                format!("for i in 1..({} as usize + 1) {{\n{} = {iter_expr};\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.ref_var(*s, *v, true), self.emit_block(body))
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
             Stmt::CallCustom(name, args) => {
@@ -187,11 +186,14 @@ impl Sprite<Msg, Stage> for {0} {{
                 let list = self.ref_var(*s, *v, true);
                 let index = self.emit_expr(i, Some(SType::Number));
                 let item = self.emit_expr(item, Some(SType::Poly));
-                format!("let index = {index} as usize; let item = {item}; {list}[index] = item;\n")
+                // TODO: underflow
+                format!("let index = {index} as usize - 1; let item = {item}; {list}[index] = item;\n")
             },  // TODO: what happens on OOB?
             Stmt::ListPush(s, v, item) => format!("{}.push({});\n", self.ref_var(*s, *v, false), self.emit_expr(item, Some(SType::Poly))),
             Stmt::ListClear(s, v) => format!("{}.clear();\n", self.ref_var(*s, *v, true)),
-            Stmt::ListRemoveIndex(s, v, i) =>  format!("{}.remove({} as usize);\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
+            Stmt::ListRemoveIndex(s, v, i) =>
+                // TODO: underflow
+                format!("{}.remove({} as usize - 1);\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
             Stmt::BroadcastWait(name) => {
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
                 // TODO: multiple receivers HACK
@@ -288,7 +290,7 @@ impl Sprite<Msg, Stage> for {0} {{
                     return self.coerce(&SType::Number, format!("{}.powf({})", a, b), &t)
                 }
                 if *op == BinOp::StrJoin {
-                    return self.coerce(&SType::Str, format!("(Cow::from({}.to_string() + {}.as_ref()))", a, b), &t)
+                    return self.coerce(&SType::Str, format!("({}.join({}))", a, b), &t)
                 }
                 format!("todo!(r#\"{:?}\"#)", expr)
             },
@@ -296,7 +298,7 @@ impl Sprite<Msg, Stage> for {0} {{
                 let (found, value) = match op {
                     UnOp::Not => (SType::Bool, format!("(!{})", self.emit_expr(e, Some(SType::Bool)))),
                     UnOp::SuffixCall(name) => (SType::Number, format!("({}.{name}())", self.emit_expr(e, Some(SType::Number)))),
-                    UnOp::StrLen => (SType::Number, format!("({}.as_ref().len() as f64)", self.emit_expr(e, Some(SType::Str)))),
+                    UnOp::StrLen => (SType::Number, format!("{}.len()", self.emit_expr(e, Some(SType::Str)))),
                 };
                 self.coerce(&found, value, &t)
             }
@@ -322,7 +324,7 @@ impl Sprite<Msg, Stage> for {0} {{
                     _ => {
                         match s.parse::<f64>() {
                             Ok(v) => (format!("({}f64)", v), SType::Number),
-                            Err(_) => (format!("Cow::from(\"{}\")", s.escape_default()), SType::Str),
+                            Err(_) => (format!("Str::from(\"{}\")", s.escape_default()), SType::Str),
                         }
 
                     }  // Brackets because I'm not sure of precedence for negative literals
@@ -334,7 +336,8 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce(&SType::Number, e, &t)
             },
             Expr::ListGet(s, v, i) => {
-                let value = format!("{}[{} as usize]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
+                // TODO: underflow
+                let value = format!("{}[{} as usize - 1]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
                 self.coerce(&SType::Poly, value, &t)
             },  // TODO: what happens on OOB?
             Expr::BuiltinRuntimeGet(name) => {
@@ -342,15 +345,13 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce(&found, format!("sprite.{}()", name), &t)
             },
             Expr::StringGetIndex(string, index) => {
-                // TODO: do this without allocating
-                // TODO: don't evaluate index twice!
-                let value = format!("Cow::from({0}.as_ref()[({1} as usize)..({1} as usize)+1].to_string())", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
+                let value = format!("{}.get_index({})", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
                 self.coerce(&SType::Str, value, &t)
             }
             Expr::Empty => match t {
                 None | Some(SType::Poly) => "NumOrStr::Empty",
                 Some(SType::Number) => "0.0f64",
-                Some(SType::Str) => "Cow::from(\"\")",
+                Some(SType::Str) => "Str::from(\"\")",
                 Some(SType::Bool) => "false",
                 Some(SType::ListPoly) => panic!("Null list."),
             }.to_string(),
@@ -383,12 +384,12 @@ impl Sprite<Msg, Stage> for {0} {{
                 },
             };
         } else if found == &SType::Poly {
-            assert!(!value.ends_with(".to_num()"));
-            assert!(!value.ends_with(".to_str()"));
+            assert!(!value.ends_with(".as_num()"));
+            assert!(!value.ends_with(".as_str()"));
             return match want {
-                &SType::Number => format!("{value}.to_num()"),
-                &SType::Str => format!("{value}.to_str()"),
-                &SType::Bool => format!("{value}.to_bool()"),
+                &SType::Number => format!("{value}.as_num()"),
+                &SType::Str => format!("{value}.as_str()"),
+                &SType::Bool => format!("{value}.as_bool()"),
                 _ => {
                     //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
                     value
@@ -397,7 +398,7 @@ impl Sprite<Msg, Stage> for {0} {{
         } else if want == &SType::Str && found == &SType::Number {
             // TODO: this is only valid in string concat, otherwise probably an inference bug?
             //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
-            return format!("{value}.to_string()")
+            return format!("NumOrStr::from({value}).as_str()")
         } else {
             //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
             return value
@@ -432,7 +433,7 @@ fn type_name(t: SType) -> &'static str {
         SType::Number => "f64",
         SType::ListPoly => "Vec<NumOrStr>",
         SType::Bool => "bool",
-        SType::Str => "Cow<'static, str>",
+        SType::Str => "Str",
         SType::Poly => "NumOrStr"
     }
 }

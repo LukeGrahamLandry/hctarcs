@@ -289,8 +289,8 @@ impl<'src> Parser<'src> {
                     let mut i = self.parse_op_expr(INDEX);
 
                     if let Expr::Literal(s) = &i {
-                        if s == "last" {
-                            i = Expr::Bin(BinOp::Sub, Box::new(Expr::ListLen(scope, v)), Box::new(Expr::Literal("1".into())));
+                        if s == "last" {  // One indexed!
+                            i = Expr::ListLen(scope, v);
                         }
                     }
                     self.expect_type(&i, SType::Number);
@@ -314,8 +314,8 @@ impl<'src> Parser<'src> {
                     let mut i = self.parse_op_expr(INDEX);
 
                     if let Expr::Literal(s) = &i {
-                        if s == "last" {
-                            i = Expr::Bin(BinOp::Sub, Box::new(Expr::ListLen(scope, v)), Box::new(Expr::Literal("1".into())));
+                        if s == "last" {  // One indexed!
+                            i = Expr::ListLen(scope, v);
                         }
                     }
                     self.expect_type(&i, SType::Number);
@@ -457,11 +457,11 @@ impl<'src> Parser<'src> {
             "data_itemoflist" => unwrap_field!(block, Field::List { LIST } => {
                 unwrap_input!(block, Input::ListIndex { INDEX } => {
                     let (v, scope) = self.resolve(LIST);
+                    // TODO: this parse_index logic is in 3 places. condense it and add support for list["random"]
                     let mut i = self.parse_op_expr(INDEX);
-
                     if let Expr::Literal(s) = &i {
-                        if s == "last" {
-                            i = Expr::Bin(BinOp::Sub, Box::new(Expr::ListLen(scope, v)), Box::new(Expr::Literal("1".into())));
+                        if s == "last" {  // One indexed!
+                            i = Expr::ListLen(scope, v);
                         }
                     }
                     self.expect_type(&i, SType::Number);

@@ -10,6 +10,9 @@ pub struct SpriteBase {
     pub pen: Pen,
     // TODO: be careful implementing cloning because don't want to double draw pending lines
     pub lines: Vec<Line>,  // TODO: run length encoding?
+    // TODO: is this shared across sprites?
+    // TODO: Will be async
+    pub last_answer: String,
 }
 
 #[derive(Clone, Default, Debug)]

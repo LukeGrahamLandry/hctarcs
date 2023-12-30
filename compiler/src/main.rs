@@ -32,5 +32,10 @@ fn compile(input: &str, output: &str) -> String{
     println!("Running cargo check...");
     assert!(Command::new("cargo").arg("check").current_dir(output).output().unwrap().status.success());
     assert_eq!(result.matches("NumOrStr::from(NumOrStr::from").count(), 0, "redundant NumOrStr construct");
+
+    // TODO
+    // assert_eq!(result.matches("Str::from(Str::from").count(), 0, "redundant Str construct");
+    // assert_eq!(result.matches(".clone().as_str()").count(), 0, "redundant clone");
+    // assert_eq!(result.matches(".clone().as_num()").count(), 0, "redundant clone");
     result
 }

@@ -12,6 +12,7 @@ use crate::sprite::{Sprite, SpriteBase, Trigger};
 pub mod sprite;
 pub mod builtins;
 pub mod callback;
+pub mod poly;
 
 /// Types for Msg and Globals are generated for a specific scratch program by the compiler.
 /// The default form of message must be FlagClicked

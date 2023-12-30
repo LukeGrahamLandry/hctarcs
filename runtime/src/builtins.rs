@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
+use crate::poly::Str;
 use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
@@ -66,32 +67,40 @@ impl SpriteBase {
         self.y
     }
 
-    pub fn sensing_answer(&self) -> Cow<'static, str> {
-        Cow::from("TODO: sensing_answer not implemented yet.")
+    pub fn sensing_answer(&self) -> Str {
+        Str::Owned(self.last_answer.clone())
     }
 
+    // TODO
     pub fn pen_stamp(&self) {
-        todo!("pen_stamp")
+        // println!("pen_stamp")
     }
 
     pub fn looks_hide(&self) {
-        todo!("looks_hide")
+        println!("looks_hide")
     }
 
     pub fn pen_clear(&self) {
-        todo!("pen_clear")
+        println!("pen_clear")
     }
 
     pub fn looks_setsizeto(&self, size: f64) {
-        todo!("looks_setsizeto")
+        println!("looks_setsizeto")
     }
 
-    pub fn looks_switchcostumeto(&self, costume: Cow<'static, str>) {
-        todo!("looks_switchcostumeto")
+    // TODO
+    pub fn looks_switchcostumeto(&self, costume: Str) {
+        match costume {
+            Str::Char(c) => print!("{c}"),
+            Str::Const(_) | Str::Owned(_) => {},
+        }
     }
 
-    pub fn sensing_askandwait(&self) {
-        todo!("sensing_askandwait")
+    // TODO: will be async
+    pub fn sensing_askandwait(&mut self) {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).unwrap();
+        self.last_answer = line;  // TODO: trim new-line?
     }
 
     fn pos(&self) -> (f64, f64) {
@@ -122,91 +131,5 @@ pub fn dyn_rand(min: f64, max: f64) -> f64 {
         RNG.with(|rng| rng.borrow_mut().gen_range((min as isize)..(max as isize)) as f64)
     } else {
         RNG.with(|rng| rng.borrow_mut().gen_range(min..max))
-    }
-}
-
-
-// TODO: this name is misleading now
-// TODO: avoid this whenever possible
-// TODO: allow sub-slices to be static if contents is static.
-// TODO: small string type so one char doesnt need to reallocate.
-// TODO: could probably make this smaller, Cow is 3 words (both variants have a ptr niche)?
-/// Cloning is only expensive if it holds a dynamically computed string.
-#[derive(Clone, PartialEq, Debug, Default)]
-pub enum NumOrStr {
-    Num(f64),
-    Str(Cow<'static, str>),
-    Bool(bool),
-    #[default]
-    Empty
-}
-
-// TODO: UNUSED thus far
-pub enum Str {
-    Const(&'static str),
-    Char(char),
-    Owned(String),
-}
-
-
-impl NumOrStr {
-    pub fn to_num(&self) -> f64 {
-        match self {
-            NumOrStr::Num(n) => *n,
-            NumOrStr::Str(_) |   NumOrStr::Empty | NumOrStr::Bool(_) => 0.0,
-        }
-    }
-
-    // TODO: you want to call the version with ownership when possible
-    pub fn to_str(&self) -> Cow<'static, str> {
-        match self {
-            NumOrStr::Num(n) => Cow::from(n.to_string()),  // TODO: this is a bit fishy
-            NumOrStr::Str(s) => s.clone(),
-            NumOrStr::Empty => Cow::from(""),
-            // TODO: optimisation pass that makes sure you're not doing this because you're comparing to a string literal
-            NumOrStr::Bool(b) => if *b { Cow::from("true") } else { Cow::from("false") },
-        }
-    }
-
-    pub fn to_bool(&self) -> bool {
-        match self {
-            NumOrStr::Num(n) => todo!("Tried to convert {:?} to bool.", n),
-            NumOrStr::Str(s) => todo!("Tried to convert {:?} to bool.", s),
-            NumOrStr::Empty => false,
-            NumOrStr::Bool(b) => *b,
-        }
-    }
-}
-
-impl From<f64> for NumOrStr {
-    fn from(value: f64) -> Self {
-        NumOrStr::Num(value)
-    }
-}
-
-impl From<Cow<'static, str>> for NumOrStr {
-    fn from(value: Cow<'static, str>) -> Self {
-        NumOrStr::Str(value)
-    }
-}
-
-impl From<bool> for NumOrStr {
-    fn from(value: bool) -> Self {
-        NumOrStr::Bool(value)
-    }
-}
-
-impl From<NumOrStr> for f64 {
-    fn from(value: NumOrStr) -> Self {
-        value.to_num()
-    }
-}
-
-impl From<NumOrStr> for Cow<'static, str> {
-    fn from(value: NumOrStr) -> Self {
-        match value {
-            NumOrStr::Str(s) => s,  // We have ownership so don't call the cloning version.
-            _ => value.to_str()
-        }
     }
 }

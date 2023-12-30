@@ -1,4 +1,12 @@
 
+## running tres
+
+Cheating and just printing name of costume if it's a char and ignoring pen stamp because that's how they print. 
+
+Now it actually runs and prints: Panic! resolve-path: Could not resolve path `/bin/shell`
+(which for clarity is a fake os panic not a rust panic)
+
+
 ## argument type inference (Dec 29)
 
 So I need a way to link the expressions used as arguments when calling a procedure to the parameter variables used in the body.  
@@ -43,6 +51,13 @@ Did that, feels like a lot of cloning that would be slow, but also it makes no d
 
 Can also assert cargo check passes as part of the tests. 
 And if I can think of any dumb syntactic things to check for like `NumOrStr::from(NumOrStr::from(...expr))`.
+TODO: equality check without cloning the string 
+
+Feel the need to make my own string type, so it doesn't have to allocate when getting a char, just store that inline. 
+I'm sure someone has a better version of small string optimisation I could depend on. 
+But have to make sure it also doesn't allocate for constant strings.
+
+String get letter is zero indexed! So are lists! Same with for-each-loops!
 
 ## async ideas (Dec 28)
 
