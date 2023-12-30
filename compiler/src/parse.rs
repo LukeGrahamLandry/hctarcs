@@ -37,7 +37,64 @@ impl From<ScratchProject> for Project {
             proj.targets.push(result);
         }
 
+        // This feels sad and slow but it seems to not that big a difference and does improve inference coverage.
+        for i in 0..proj.targets.len() {
+            for j in 0..proj.targets[i].procedures.len() {
+                let block = proj.targets[i].procedures[j].body.clone();
+                post_pass_infer_block(&mut proj, block);
+            }
+        }
+        for i in 0..proj.targets.len() {
+            for j in 0..proj.targets[i].functions.len() {
+                let block = proj.targets[i].functions[j].body.clone();
+                post_pass_infer_block(&mut proj, block);
+            }
+        }
         proj
+    }
+}
+
+fn post_pass_infer_expr(project: &mut Project, expr: Expr) {
+    if let Some(t) = infer_type(project, &expr) {
+        expect_type(project, &expr, t);
+    }
+}
+
+fn post_pass_infer_block(project: &mut Project, s: Vec<Stmt>) {
+    for s in s {
+        post_pass_infer_stmt(project, s)
+    }
+}
+
+fn post_pass_infer_stmt(project: &mut Project, stmt: Stmt) {
+    match stmt {
+        Stmt::RepeatTimes(e, s) |
+        Stmt::If(e, s) |
+        Stmt::RepeatUntil(e, s) => {
+            post_pass_infer_expr(project, e);
+            post_pass_infer_block(project, s);
+        }
+        Stmt::IfElse(e, s, s1) => {
+            post_pass_infer_expr(project, e);
+            post_pass_infer_block(project, s);
+            post_pass_infer_block(project, s1);
+        }
+
+        Stmt::RepeatTimesCapture(_, _, _, _) => {}
+        Stmt::SetField(v, e) |
+        Stmt::SetGlobal(v, e) => {
+            post_pass_infer_expr(project, e.clone());
+            if let Some(t) = infer_type(project, &e) {
+                project.expect_type(v, t);
+            }
+        }
+        Stmt::ListSet(_, _, _, _) => {}
+        Stmt::ListPush(_, _, _) => {}
+        Stmt::ListClear(_, _) => {}
+        Stmt::ListRemoveIndex(_, _, _) => {}
+        Stmt::BuiltinRuntimeCall(_, _) => {}
+        Stmt::CallCustom(_, _) => {}
+        Stmt::StopScript | Stmt::Exit | Stmt::BroadcastWait(_) | Stmt::UnknownOpcode(_) => {}
     }
 }
 
@@ -68,7 +125,7 @@ struct ProcProto<'src> {
 
 impl<'src> Parser<'src> {
     fn parse(mut self) -> Sprite {
-        println!("Parse Sprite {}", self.target.name);
+        // println!("Parse Sprite {}", self.target.name);
         validate(self.target);
 
         // Need to make two passes over the procedures.
@@ -84,7 +141,7 @@ impl<'src> Parser<'src> {
                 let proto = proto.mutation.as_ref().unwrap();
                 // TODO: arg names are not globally unique
                 let args: Vec<_> = proto.arg_names().iter().map(|n| self.project.next_var(n, true)).collect();
-                println!("Decl proc {}", proto.name());
+                //println!("Decl proc {}", proto.name());
                 (proto.name().to_string(), ProcProto {
                     args_by_name: proto.arg_names().iter().zip(args.iter()).map(|(k, v)| (k.clone(), *v)).collect(),
                     params: args,
@@ -97,7 +154,7 @@ impl<'src> Parser<'src> {
         let procs: Vec<_> = self.procedures.keys().cloned().collect();
         for name in &procs {
             let proc = self.procedures.get(name).unwrap();
-            println!("Parse Proc {name}");
+            //println!("Parse Proc {name}");
             let args = proc.params.clone();
             self.args_by_name = proc.args_by_name.clone();
             procedures.push(Proc {
@@ -111,7 +168,7 @@ impl<'src> Parser<'src> {
         let mut functions = vec![];
         let entry = self.target.blocks.iter().filter(|(_, v)| v.opcode.starts_with("event_when"));
         for (name, block) in entry {
-            println!("Parse Func {name}");
+            //println!("Parse Func {name}");
             let start = self.parse_trigger(block);
             functions.push(Func {
                 start,
@@ -171,8 +228,10 @@ impl<'src> Parser<'src> {
                 let (v, scope) = self.resolve(VARIABLE);
                 if let Some(val_t) = val_t {
                     self.project.expect_type(v, val_t);
+                } else if let Some(var_t) = &self.project.expected_types[v.0] {
+                     self.expect_type(&value, var_t.clone());
                 }
-                println!("Set {:?} = {:?}", v, value);
+                //println!("Set {:?} = {:?}", v, value);
                 match scope {
                     Scope::Instance => Stmt::SetField(v, value),
                     Scope::Global => Stmt::SetGlobal(v, value)
@@ -207,7 +266,7 @@ impl<'src> Parser<'src> {
             }),
             "procedures_call" => unwrap_input!(block, Input::Named(args) => {
                 let proto = block.mutation.as_ref().unwrap();
-                println!("Call {}", proto.name());
+                //println!("Call {}", proto.name());
                 let args: Vec<_> = proto.arg_ids().iter()
                     .map(|id| args.get(id).unwrap())
                     .map(|o| self.parse_op_expr(o))
@@ -297,7 +356,7 @@ impl<'src> Parser<'src> {
     }
 
     fn maybe_expect_list(&mut self, list: VarId, item: &Expr) {
-        println!("expect list {:?} -> {}", item, self.project.var_names[list.0]);
+        //println!("expect list {:?} -> {}", item, self.project.var_names[list.0]);
         let val_t = self.infer_type(&item);
         self.project.expect_type(list, SType::ListPoly);
 
@@ -353,7 +412,13 @@ impl<'src> Parser<'src> {
     fn parse_expr(&mut self, block: &Block) -> Expr {
         if let Some(op) = bin_op(&block.opcode) {  // TODO: make sure of left/right ordering
             let (lhs, rhs) = block.inputs.as_ref().unwrap().unwrap_pair();
-            return Expr::Bin(op, Box::from(self.parse_op_num(lhs)), Box::from(self.parse_op_num(rhs)))
+            let expr = Expr::Bin(op, Box::from(self.parse_op_num(lhs)), Box::from(self.parse_op_num(rhs)));
+            // TODO: this is a bit silly. infer_type knows the output types and expect_type knows the input types and i dont want to be redundant.
+            let out_t = infer_type(self.project, &expr);
+            if let Some(out_t) = out_t {
+                self.expect_type(&expr, out_t)
+            }
+            return expr;
         }
 
         match block.opcode.as_str() {
@@ -430,77 +495,7 @@ impl<'src> Parser<'src> {
     // Input should always be valid since its generated by scratch.
     // A panic here is probably a bug.
     fn expect_type(&mut self, e: &Expr, t: SType) {
-        println!("expect_type {:?} {:?}", t, e);
-        match e {
-            Expr::GetField(v) |
-            Expr::GetGlobal(v) |
-            Expr::GetArgument(v)
-                => self.project.expect_type(*v, t),
-            Expr::Bin(op, rhs, lhs) => {
-                match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow | BinOp::Mod => {
-                        assert!(matches!(t, SType::Number | SType::Poly));
-                        self.expect_type(rhs, SType::Number);
-                        self.expect_type(lhs, SType::Number);
-                    }
-                    BinOp::GT | BinOp::LT => {
-                        assert!(matches!(t, SType::Number | SType::Bool));
-                        self.expect_type(rhs, SType::Number);
-                        self.expect_type(lhs, SType::Number);
-                    }
-                    BinOp::EQ => {
-                        assert_eq!(t, SType::Bool);
-                        let a = self.infer_type(lhs);
-                        let b = self.infer_type(rhs);
-                        if a != b {
-                            self.expect_type(lhs, SType::Poly);
-                            self.expect_type(rhs, SType::Poly);
-                        }
-                    },
-                    BinOp::And | BinOp::Or => {
-                        assert_eq!(t, SType::Bool);
-                        self.expect_type(rhs, SType::Bool);
-                        self.expect_type(lhs, SType::Bool);
-                    }
-                    BinOp::StrJoin => {
-                        assert!(matches!(t, SType::Str | SType::Poly));
-                        self.expect_type(rhs, SType::Str);
-                        self.expect_type(lhs, SType::Str);
-                    }
-                }
-            }
-            Expr::Un(op, v) => {
-                match op {
-                    UnOp::Not => {
-                        assert_eq!(t, SType::Bool);
-                        self.expect_type(v, SType::Bool);
-                    }
-                    UnOp::SuffixCall(_) => {
-                        assert_eq!(t, SType::Number);
-                        self.expect_type(v, SType::Number);
-                    }
-                    UnOp::StrLen => {
-                        assert_eq!(t, SType::Number);
-                        self.expect_type(v, SType::Str)
-                    }
-                }
-            }
-            Expr::Literal(s) => {
-                if t == SType::Poly {
-                    return;
-                }
-                match s.as_str() {  // TODO: really need to parse this in one place
-                    "true" | "false" => assert!(matches!(t, SType::Bool | SType::Str)),
-                    "Infinity" | "-Infinity" => assert!(matches!(t, SType::Number)),
-                    "" => assert!(matches!(t, SType::Number | SType::Str)),
-                    _ => match s.parse::<f64>() {
-                        Ok(_) => assert_eq!(t, SType::Number),
-                        Err(_) => assert_eq!(t, SType::Str),
-                    }
-                }
-            }
-            _ => {}
-        }
+        expect_type(self.project, e, t)
     }
 
     fn infer_type(&mut self, e: &Expr) -> Option<SType> {
@@ -595,7 +590,7 @@ impl Project {
                 self.expected_types[v.0] = Some(t);
             }
             Some(prev) => if !types_match(prev, &t) {
-                println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0]);
+                //println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0]);
                 self.expected_types[v.0] = Some(SType::Poly);
             }
         }
@@ -642,5 +637,87 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
             }
         }
         _ => None
+    }
+}
+
+// This is hard to call because the expr is often in the project
+fn expect_type(project: &mut Project, e: &Expr, t: SType) {
+    //println!("expect_type {:?} {:?}", t, e);
+    match e {
+        Expr::GetField(v) |
+        Expr::GetGlobal(v) |
+        Expr::GetArgument(v)
+        => project.expect_type(*v, t),
+        Expr::Bin(op, rhs, lhs) => {
+            match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow | BinOp::Mod => {
+                    assert!(matches!(t, SType::Number | SType::Poly));
+                    expect_type(project, rhs, SType::Number);
+                    expect_type(project, lhs, SType::Number);
+                }
+                BinOp::GT | BinOp::LT => {
+                    assert!(matches!(t, SType::Number | SType::Bool));
+                    expect_type(project, rhs, SType::Number);
+                    expect_type(project, lhs, SType::Number);
+                }
+                BinOp::EQ => {
+                    assert_eq!(t, SType::Bool);
+                    let a = infer_type(project, lhs);
+                    let b = infer_type(project, rhs);
+                    if a != b {
+                        // TODO: HACK for better noticing var == bool literal in ray tracer
+                        if matches!(lhs.as_ref(), &Expr::Literal(_)) {
+                            expect_type(project, rhs, a.unwrap());
+                        } else if matches!(rhs.as_ref(), &Expr::Literal(_)) {
+                            expect_type(project, lhs, b.unwrap());
+                        } else {
+                            expect_type(project, lhs, SType::Poly);
+                            expect_type(project, rhs, SType::Poly);
+                        }
+                    }
+                },
+                BinOp::And | BinOp::Or => {
+                    assert_eq!(t, SType::Bool);
+                    expect_type(project, rhs, SType::Bool);
+                    expect_type(project, lhs, SType::Bool);
+                }
+                BinOp::StrJoin => {
+                    assert!(matches!(t, SType::Str | SType::Poly));
+                    expect_type(project, rhs, SType::Str);
+                    expect_type(project, lhs, SType::Str);
+                }
+            }
+        }
+        Expr::Un(op, v) => {
+            match op {
+                UnOp::Not => {
+                    assert_eq!(t, SType::Bool);
+                    expect_type(project, v, SType::Bool);
+                }
+                UnOp::SuffixCall(_) => {
+                    assert_eq!(t, SType::Number);
+                    expect_type(project, v, SType::Number);
+                }
+                UnOp::StrLen => {
+                    assert_eq!(t, SType::Number);
+                    expect_type(project, v, SType::Str)
+                }
+            }
+        }
+        Expr::Literal(s) => {
+            if t == SType::Poly {
+                return;
+            }
+            match s.as_str() {  // TODO: really need to parse this in one place
+                "true" | "false" => assert!(matches!(t, SType::Bool | SType::Str)),
+                "Infinity" | "-Infinity" => assert!(matches!(t, SType::Number)),
+                "" => assert!(matches!(t, SType::Number | SType::Str)),
+                _ => match s.parse::<f64>() {
+                    Ok(_) => assert_eq!(t, SType::Number),
+                    Err(_) => assert_eq!(t, SType::Str),
+                }
+            }
+        }
+        _ => {}
     }
 }

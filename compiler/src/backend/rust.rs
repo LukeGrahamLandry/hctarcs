@@ -189,7 +189,7 @@ impl Sprite<Msg, Stage> for {0} {{
                 let item = self.emit_expr(item, Some(SType::Poly));
                 format!("let index = {index} as usize; let item = {item}; {list}[index] = item;\n")
             },  // TODO: what happens on OOB?
-            Stmt::ListPush(s, v, item) => format!("{}.push(NumOrStr::from({}));\n", self.ref_var(*s, *v, false), self.emit_expr(item, None)),  // TODO: what happens on OOB?
+            Stmt::ListPush(s, v, item) => format!("{}.push({});\n", self.ref_var(*s, *v, false), self.emit_expr(item, Some(SType::Poly))),
             Stmt::ListClear(s, v) => format!("{}.clear();\n", self.ref_var(*s, *v, true)),
             Stmt::ListRemoveIndex(s, v, i) =>  format!("{}.remove({} as usize);\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
             Stmt::BroadcastWait(name) => {
@@ -288,7 +288,7 @@ impl Sprite<Msg, Stage> for {0} {{
                     return self.coerce(&SType::Number, format!("{}.powf({})", a, b), &t)
                 }
                 if *op == BinOp::StrJoin {
-                    return self.coerce(&SType::Str, format!("Cow::from({}.to_string() + {}.as_ref())", a, b), &t)
+                    return self.coerce(&SType::Str, format!("(Cow::from({}.to_string() + {}.as_ref()))", a, b), &t)
                 }
                 format!("todo!(r#\"{:?}\"#)", expr)
             },
@@ -314,12 +314,8 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce_var(*v, e, &t)
             },
             Expr::Literal(s) => {
-                let (value, found) = match s.as_str() {  // TODO: proper strings and bools. HACK!
-                    "true" | "false" => if Some(SType::Bool) == t {
-                        (s.parse::<bool>().unwrap().to_string(), SType::Bool)
-                    } else {
-                        (s.clone(), SType::Str)
-                    },
+                let (value, found) = match s.as_str() {
+                    "true" | "false" => (s.parse::<bool>().unwrap().to_string(), SType::Bool),
                     "Infinity" => ("f64::INFINITY".to_string(), SType::Number),
                     "-Infinity" => ("f64::NEG_INFINITY".to_string(), SType::Number),
                     "" => unreachable!(),
@@ -333,7 +329,10 @@ impl Sprite<Msg, Stage> for {0} {{
                 };
                 self.coerce(&found, value, &t)
             },
-            Expr::ListLen(s, v) => format!("({}.len() as f64)", self.ref_var(*s, *v, true)),
+            Expr::ListLen(s, v) => {
+                let e = format!("({}.len() as f64)", self.ref_var(*s, *v, true));
+                self.coerce(&SType::Number, e, &t)
+            },
             Expr::ListGet(s, v, i) => {
                 let value = format!("{}[{} as usize]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
                 self.coerce(&SType::Poly, value, &t)
@@ -379,7 +378,7 @@ impl Sprite<Msg, Stage> for {0} {{
                 &SType::Number | &SType::Bool => format!("NumOrStr::from({value})"),
                 &SType::Str => format!("NumOrStr::from({value}.clone())"),
                 _ => {
-                    println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+                    //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
                     value
                 },
             };
@@ -391,16 +390,16 @@ impl Sprite<Msg, Stage> for {0} {{
                 &SType::Str => format!("{value}.to_str()"),
                 &SType::Bool => format!("{value}.to_bool()"),
                 _ => {
-                    println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+                    //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
                     value
                 }
             }
         } else if want == &SType::Str && found == &SType::Number {
             // TODO: this is only valid in string concat, otherwise probably an inference bug?
-            println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+            //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
             return format!("{value}.to_string()")
         } else {
-            println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+            //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
             return value
         }
     }

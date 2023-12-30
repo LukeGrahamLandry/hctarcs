@@ -32,6 +32,18 @@ Lucky that's a statement, so I can put locals.
 
 Passes cargo check!
 
+TODO: test that makes sure any changes never make the ray tracer use polymorphic types. (I had to rescue bools once already)
+Currently my type inference is non-deterministic, so I think whether it compiles the ray tracer 
+correctly depends on the (random) iteration order of a hashmap.  
+So the common problem it seems is locals that are only ever assigned from arguments 
+and passed to functions without being directly used in an expression so those statements 
+could be processed before it knows types for the function parameters, and then it guesses 
+they must be polymorphic. Instead of guessing, I should walk the tree and see if there's any usages that have type checked by now.
+Did that, feels like a lot of cloning that would be slow, but also it makes no difference cause profiler says 75% of the time is serde parsing the json anyway (or 86% in debug mode).
+
+Can also assert cargo check passes as part of the tests. 
+And if I can think of any dumb syntactic things to check for like `NumOrStr::from(NumOrStr::from(...expr))`.
+
 ## async ideas (Dec 28)
 
 Do my own async, so I don't have to deal with functions closing over their mutable sprite/global arguments? 

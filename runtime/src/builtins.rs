@@ -125,7 +125,13 @@ pub fn dyn_rand(min: f64, max: f64) -> f64 {
     }
 }
 
+
+// TODO: this name is misleading now
 // TODO: avoid this whenever possible
+// TODO: allow sub-slices to be static if contents is static.
+// TODO: small string type so one char doesnt need to reallocate.
+// TODO: could probably make this smaller, Cow is 3 words (both variants have a ptr niche)?
+/// Cloning is only expensive if it holds a dynamically computed string.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub enum NumOrStr {
     Num(f64),
@@ -133,6 +139,13 @@ pub enum NumOrStr {
     Bool(bool),
     #[default]
     Empty
+}
+
+// TODO: UNUSED thus far
+pub enum Str {
+    Const(&'static str),
+    Char(char),
+    Owned(String),
 }
 
 
