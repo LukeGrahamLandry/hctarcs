@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
-use crate::parse::{infer_type, safe_str};
+use crate::parse::{infer_type, runtime_prototype, safe_str};
 
 pub fn emit_rust(project: &Project) -> String {
     let msgs: HashSet<Trigger> = project.targets.
@@ -11,6 +11,7 @@ pub fn emit_rust(project: &Project) -> String {
         .flatten()
         .filter(|t| matches!(t, Trigger::Message(_)))
         .collect(); // TODO: Im not convinced this has no duplicates
+                    //       Figured it out! problem is that multiple names can match same safe_str after remove special characters
     let msg_fields: HashSet<String> = msgs.iter().map(|t| {
         let name = match t {
             Trigger::Message(name) => name,
@@ -146,7 +147,8 @@ impl Sprite<Msg, Stage> for {0} {{
     fn emit_stmt(&mut self, stmt: &'src Stmt) -> String {
         match stmt {
             Stmt::BuiltinRuntimeCall(name, args) => {
-                format!("sprite.{}({});\n", name, self.emit_args(args))
+                let arg_types: Vec<_> = runtime_prototype(name).unwrap().iter().map(|t| Some(t.clone())).collect();
+                format!("sprite.{}({});\n", name, self.emit_args(args, &arg_types))
             },
             Stmt::SetField(v, e) => {
                 format!("self.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
@@ -169,11 +171,14 @@ impl Sprite<Msg, Stage> for {0} {{
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
             Stmt::CallCustom(name, args) => {
-                format!("self.{name}(sprite, globals, {});\n", self.emit_args(args))
+                format!("self.{name}(sprite, globals, {});\n", self.emit_args(args, &self.arg_types(name)))
             }
-            Stmt::ListSet(s, v, i, item) => format!("{}[{} as usize] = NumOrStr::from({});\n", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)), self.emit_expr(item, None)),  // TODO: what happens on OOB?
+            Stmt::ListSet(s, v, i, item) => {
+                format!("{}[{} as usize] = {};\n", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)), self.emit_expr(item, Some(SType::Poly)))
+            },  // TODO: what happens on OOB?
             Stmt::ListPush(s, v, item) => format!("{}.push(NumOrStr::from({}));\n", self.ref_var(*s, *v), self.emit_expr(item, None)),  // TODO: what happens on OOB?
             Stmt::ListClear(s, v) => format!("{}.clear();\n", self.ref_var(*s, *v)),
+            Stmt::ListRemoveIndex(s, v, i) =>  format!("{}.remove({} as usize);\n", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
             Stmt::BroadcastWait(name) => {
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
                 // TODO: multiple receivers HACK
@@ -184,10 +189,16 @@ impl Sprite<Msg, Stage> for {0} {{
         }
     }
 
+    fn arg_types(&self, proc_name: &str) -> Vec<Option<SType>> {
+        // If I was being super fancy, we know they're sequential so could return a slice of the original vec with 'src.
+        self.target.procedures.iter().find(|p| p.name == proc_name).unwrap()
+            .args.iter().map(|v| self.project.expected_types[v.0].clone()).collect()
+    }
+
     /// Comma seperated
-    fn emit_args(&mut self, args: &'src [Expr]) -> String {
+    fn emit_args(&mut self, args: &'src [Expr], arg_types: &[Option<SType>]) -> String {
         // TODO: I shouldn't have to allocate the vec
-        let args = args.iter().map(|e| self.emit_expr(e, None)).collect::<Vec<_>>();
+        let args = args.iter().zip(arg_types.iter()).map(|(e, t)| self.emit_expr(e, t.clone())).collect::<Vec<_>>();
         args.join(", ")
     }
 
@@ -197,6 +208,7 @@ impl Sprite<Msg, Stage> for {0} {{
 
     // Allocating so many tiny strings but it makes the code look so simple.
     fn emit_expr(&mut self, expr: &'src Expr, t: Option<SType>) -> String {
+        let t = t.or(Some(SType::Poly));
         match expr {
             Expr::Bin(op, rhs, lhs) => {
                 // TODO: clean up `[true/false literal] == [some bool expr]`
@@ -213,10 +225,15 @@ impl Sprite<Msg, Stage> for {0} {{
                     _ => None
                 };
                 let arg_t = match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::GT | BinOp::Random | BinOp::LT => Some(SType::Number),
+                    BinOp::Pow |BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::GT | BinOp::Random | BinOp::LT => Some(SType::Number),
                     BinOp::And | BinOp::Or => Some(SType::Bool),
                     BinOp::StrJoin => Some(SType::Str),
-                    _ => None
+                    BinOp::EQ => None,
+                };
+                let out_t = match op {
+                    BinOp::Pow | BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random => SType::Number,
+                    BinOp::EQ | BinOp::GT | BinOp::LT | BinOp::And | BinOp::Or => SType::Bool,
+                    BinOp::StrJoin => SType::Str,
                 };
                 // TODO: this is icky
                 let arg_t = if *op == BinOp::EQ {
@@ -245,75 +262,141 @@ impl Sprite<Msg, Stage> for {0} {{
 
                 let (a, b) = (self.emit_expr(rhs, arg_t.clone()), self.emit_expr(lhs, arg_t));
                 if let Some(infix) = infix {
-                    return format!("({} {} {})", a, infix, b)
+                    return self.coerce(&out_t, format!("({} {} {})", a, infix, b), &t)
                 }
                 if *op == BinOp::Random {
                     // TODO: optimise if both are constant ints
-                    return format!("builtins::dyn_rand({}, {})", a, b)
+                    return self.coerce(&SType::Number, format!("builtins::dyn_rand({}, {})", a, b), &t)
+                }
+                if *op == BinOp::Pow {
+                    return self.coerce(&SType::Number, format!("{}.pow({})", a, b), &t)
                 }
                 if *op == BinOp::StrJoin {
-                    return format!("Cow::from({}.to_string() + {}.as_ref())", a, b)
+                    return self.coerce(&SType::Str, format!("Cow::from({}.to_string() + {}.as_ref())", a, b), &t)
                 }
                 format!("todo!(r#\"{:?}\"#)", expr)
             },
             Expr::Un(op, e) => {
-                match op {
-                    UnOp::Not => format!("(!{})", self.emit_expr(e, Some(SType::Bool))),
-                    UnOp::SuffixCall(name) => format!("({}.{name}())", self.emit_expr(e, Some(SType::Number))),
-                }
+                let (found, value) = match op {
+                    UnOp::Not => (SType::Bool, format!("(!{})", self.emit_expr(e, Some(SType::Bool)))),
+                    UnOp::SuffixCall(name) => (SType::Number, format!("({}.{name}())", self.emit_expr(e, Some(SType::Number)))),
+                    UnOp::StrLen => (SType::Number, format!("{}.as_ref().len()", self.emit_expr(e, Some(SType::Str)))),
+                };
+                self.coerce(&found, value, &t)
             }
-            Expr::GetField(v) => self.ref_var(Scope::Instance, *v),
-            Expr::GetGlobal(v) => self.ref_var(Scope::Global, *v),
-            Expr::GetArgument(v) => self.project.var_names[v.0].clone(),
+            Expr::GetField(v) => {
+                let e = self.ref_var(Scope::Instance, *v);
+                self.coerce_var(*v, e, &t)
+            },
+            Expr::GetGlobal(v) => {
+                let e = self.ref_var(Scope::Global, *v);
+                self.coerce_var(*v, e, &t)
+
+            },
+            Expr::GetArgument(v) => {
+                let e = self.project.var_names[v.0].clone();
+                self.coerce_var(*v, e, &t)
+            },
             Expr::Literal(s) => {
-                match s.as_str() {  // TODO: proper strings and bools. HACK!
+                let (value, found) = match s.as_str() {  // TODO: proper strings and bools. HACK!
                     "true" | "false" => if Some(SType::Bool) == t {
-                        s.parse::<bool>().unwrap().to_string()
+                        (s.parse::<bool>().unwrap().to_string(), SType::Bool)
                     } else {
-                        s.clone()
+                        (s.clone(), SType::Str)
                     },
-                    "Infinity" => "f64::INFINITY".to_string(),
-                    "-Infinity" => "f64::NEG_INFINITY".to_string(),
-                    "" => "0f64".to_string(),
+                    "Infinity" => ("f64::INFINITY".to_string(), SType::Number),
+                    "-Infinity" => ("f64::NEG_INFINITY".to_string(), SType::Number),
+                    "" => unreachable!(),
                     _ => {
                         match s.parse::<f64>() {
-                            Ok(v) => format!("({}f64)", v),
-                            Err(_) => format!("Cow::from(\"{}\")", s.escape_default()),
+                            Ok(v) => (format!("({}f64)", v), SType::Number),
+                            Err(_) => (format!("Cow::from(\"{}\")", s.escape_default()), SType::Str),
                         }
 
                     }  // Brackets because I'm not sure of precedence for negative literals
-                }
+                };
+                self.coerce(&found, value, &t)
             },
             Expr::ListLen(s, v) => format!("({}.len() as f64)", self.ref_var(*s, *v)),
             Expr::ListGet(s, v, i) => {
-                // TODO: maybe strings should be in an Rc
-                let prefix = match t {
-                    Some(SType::Number) => "f64::from(",
-                    Some(SType::Str) => "Cow::from(",
-                    _ => "(",
-                };
-                format!("{prefix}{}[{} as usize].clone())", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)))
+                let value = format!("{}[{} as usize]", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)));
+                self.coerce(&SType::Poly, value, &t)
             },  // TODO: what happens on OOB?
             Expr::BuiltinRuntimeGet(name) => format!("sprite.{}()", name),
             Expr::StringGetIndex(string, index) => {
                 // TODO: cows everywhere!
                 // TODO: don't evaluate index twice!
-                format!("Cow::from(&{0}.as_ref()[({1} as usize)..({1} as usize)+1])", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)))
+                let value = format!("Cow::from(&{0}.as_ref()[({1} as usize)..({1} as usize)+1])", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
+                self.coerce(&SType::Str, value, &t)
             }
+            Expr::Empty => match t {
+                None | Some(SType::Poly) => "NumOrStr::Empty",
+                Some(SType::Number) => "0.0f64",
+                Some(SType::Str) => "Cow::from(\"\")",
+                Some(SType::Bool) => "false",
+                Some(SType::ListPoly) => panic!("Null list."),
+            }.to_string(),
             _ => format!("todo!(r#\"{:?}\"#)", expr)
         }
     }
 
+    fn coerce_var(&self, v: VarId, value: String, want: &Option<SType>) -> String {
+        let found = self.project.expected_types[v.0].as_ref().unwrap_or(&SType::Poly);
+        self.coerce(found, value, want)
+    }
+
+    fn coerce(&self, found: &SType, value: String, want: &Option<SType>) -> String {
+        let want = want.as_ref().unwrap_or(&SType::Poly);
+        if want == found {
+            return if want == &SType::Poly {
+                format!("{value}.clone()")
+            } else {
+                value
+            }
+        }
+        if want == &SType::Poly {
+            assert!(!value.starts_with("NumOrStr::from"));
+            return match found {
+                &SType::Number => format!("NumOrStr::from({value})"),
+                &SType::Str => format!("NumOrStr::from({value}.clone())"),
+                _ => {
+                    println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+                    value
+                },
+            };
+        }
+        else if found == &SType::Poly {
+            assert!(!value.ends_with(".to_num()"));
+            assert!(!value.ends_with(".to_str()"));
+            return match want {
+                &SType::Number => format!("{value}.to_num()"),
+                &SType::Str => format!("{value}.to_str()"),
+                &SType::Bool => format!("{value}.to_bool()"),
+                _ => {
+                    println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+                    value
+                }
+            }
+        } else {
+            println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+            return value
+        }
+    }
+
     fn ref_var(&mut self, scope: Scope, v: VarId) -> String {
-        match scope {
+        let value = match scope {
             Scope::Instance => format!("self.{}", self.project.var_names[v.0]),
             Scope::Global => format!("globals.{}", self.project.var_names[v.0]),
+        };
+        match &self.project.expected_types[v.0] {
+            Some(SType::Str) | Some(SType::Poly) => format!("{value}.clone()"),
+            _ => value
         }
     }
 
     fn inferred_type_name(&self, v: VarId) -> &'static str {
         match &self.project.expected_types[v.0] {
-            None => "f64 /* guess */",
+            None => "NumOrStr /* guess */",
             Some(t) => type_name(t.clone()),
         }
     }
@@ -322,8 +405,9 @@ impl Sprite<Msg, Stage> for {0} {{
 fn type_name(t: SType) -> &'static str {
     match t {
         SType::Number => "f64",
-        SType::ListPolymorphic => "Vec<NumOrStr>",
+        SType::ListPoly => "Vec<NumOrStr>",
         SType::Bool => "bool",
         SType::Str => "Cow<'static, str>",
+        SType::Poly => "NumOrStr"
     }
 }

@@ -120,6 +120,9 @@ pub enum Input {
         STRING1: Operand,
         STRING2: Operand,
     },
+    Str {
+        STRING: Operand,
+    },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty
     Named(HashMap<String, Operand>),

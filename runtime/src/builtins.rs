@@ -101,6 +101,39 @@ pub fn dyn_rand(min: f64, max: f64) -> f64 {
 pub enum NumOrStr {
     Num(f64),
     Str(Cow<'static, str>),
+    Bool(bool),
+    Empty
+}
+
+
+impl NumOrStr {
+    pub fn to_num(&self) -> f64 {
+        match self {
+            NumOrStr::Num(n) => *n,
+            NumOrStr::Str(s) => todo!("Tried to convert {:?} to number.", s),
+            NumOrStr::Empty => 0.0f64,
+            NumOrStr::Bool(s) => todo!("Tried to convert {:?} to number.", s),
+        }
+    }
+
+    // TODO: you want to call the version with ownership when possible
+    pub fn to_str(&self) -> Cow<'static, str> {
+        match self {
+            NumOrStr::Num(n) => todo!("Tried to convert {:?} to string.", n),
+            NumOrStr::Str(s) => s.clone(),
+            NumOrStr::Empty => Cow::from(""),
+            NumOrStr::Bool(b) => if *b { Cow::from("true") } else { Cow::from("false") },
+        }
+    }
+
+    pub fn to_bool(&self) -> bool {
+        match self {
+            NumOrStr::Num(n) => todo!("Tried to convert {:?} to bool.", n),
+            NumOrStr::Str(s) => todo!("Tried to convert {:?} to bool.", s),
+            NumOrStr::Empty => false,
+            NumOrStr::Bool(b) => *b,
+        }
+    }
 }
 
 impl From<f64> for NumOrStr {
@@ -115,20 +148,23 @@ impl From<Cow<'static, str>> for NumOrStr {
     }
 }
 
+impl From<bool> for NumOrStr {
+    fn from(value: bool) -> Self {
+        NumOrStr::Bool(value)
+    }
+}
+
 impl From<NumOrStr> for f64 {
     fn from(value: NumOrStr) -> Self {
-        match value {
-            NumOrStr::Num(n) => n,
-            NumOrStr::Str(s) => todo!("Tried to convert {:?} to number.", s)
-        }
+        value.to_num()
     }
 }
 
 impl From<NumOrStr> for Cow<'static, str> {
     fn from(value: NumOrStr) -> Self {
         match value {
-            NumOrStr::Num(n) => todo!("Tried to convert {:?} to string.", n),
-            NumOrStr::Str(s) => s,
+            NumOrStr::Str(s) => s,  // We have ownership so don't call the cloning version.
+            _ => value.to_str()
         }
     }
 }

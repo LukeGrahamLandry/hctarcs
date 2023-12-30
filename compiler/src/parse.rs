@@ -192,7 +192,7 @@ impl<'src> Parser<'src> {
             }),
             "data_deletealloflist" => unwrap_field!(block, Field::List { LIST } => {
                 let (v, scope) = self.resolve(LIST);
-                self.project.expect_type(v, SType::ListPolymorphic);
+                self.project.expect_type(v, SType::ListPoly);
                 Stmt::ListClear(scope, v)
             }),
             "control_for_each" => unwrap_field!(block, Field::Var { VARIABLE } => {
@@ -246,6 +246,20 @@ impl<'src> Parser<'src> {
                     Stmt::ListPush(scope, v, val)
                 })
             }),
+            "data_deleteoflist"  => unwrap_field!(block, Field::List { LIST } => {
+                unwrap_input!(block, Input::ListIndex { INDEX } => {
+                    let (v, scope) = self.resolve(LIST);
+                    let mut i = self.parse_op_expr(INDEX);
+
+                    if let Expr::Literal(s) = &i {
+                        if s == "last" {
+                            i = Expr::Bin(BinOp::Sub, Box::new(Expr::ListLen(scope, v)), Box::new(Expr::Literal("1".into())));
+                        }
+                    }
+                    self.expect_type(&i, SType::Number);
+                    Stmt::ListRemoveIndex(scope, v, i)
+                })
+            }),
             "event_broadcastandwait" => unwrap_input!(block, Input::Broadcast { BROADCAST_INPUT } => {
                 let event = self.parse_t(BROADCAST_INPUT, SType::Str);
                 Stmt::BroadcastWait(event)
@@ -282,12 +296,12 @@ impl<'src> Parser<'src> {
     fn maybe_expect_list(&mut self, list: VarId, item: &Expr) {
         println!("expect list {:?} -> {}", item, self.project.var_names[list.0]);
         let val_t = self.infer_type(&item);
-        self.project.expect_type(list, SType::ListPolymorphic);
+        self.project.expect_type(list, SType::ListPoly);
 
         if let Some(val_t) = val_t {
             match val_t {
-                SType::Number | SType::Str | SType::Bool  => {}, // TODO: why are bools ending up here
-                SType::ListPolymorphic => panic!("Expected list item found {:?} {:?} for {}", val_t, item, self.project.var_names[list.0])
+                SType::Number | SType::Str | SType::Bool | SType::Poly => {}, // TODO: why are bools ending up here
+                SType::ListPoly => panic!("Expected list item found {:?} {:?} for {}", val_t, item, self.project.var_names[list.0])
             };
         }
     }
@@ -295,7 +309,11 @@ impl<'src> Parser<'src> {
     // TODO: could replace this with parse_t since you probably always want that
     fn parse_op_expr(&mut self, block: &Operand) -> Expr {
         if let Some(constant) = block.constant() {
-            return Expr::Literal(constant.to_string());
+            return if constant.is_empty() {
+                Expr::Empty
+            } else {
+                Expr::Literal(constant.to_string())
+            };
         }
 
         if let Some(v) = block.opt_var() {
@@ -339,6 +357,9 @@ impl<'src> Parser<'src> {
             "operator_not" => unwrap_input!(block, Input::Un { OPERAND } => {
                 Expr::Un(UnOp::Not, Box::new(self.parse_t(OPERAND, SType::Bool)))
             }),
+            "operator_length" => unwrap_input!(block, Input::Str { STRING } => {
+                Expr::Un(UnOp::StrLen, Box::new(self.parse_t(STRING, SType::Str)))
+            }),
             "operator_mathop" => unwrap_field!(block, Field::Op { OPERATOR } => {
                 if let Operand::Var(name, _) = OPERATOR {
                     let e = Box::new(self.parse_op_num(block.inputs.as_ref().unwrap().unwrap_one()));  // TODO: ugh
@@ -376,13 +397,13 @@ impl<'src> Parser<'src> {
                         }
                     }
                     self.expect_type(&i, SType::Number);
-                    self.project.expect_type(v, SType::ListPolymorphic);
+                    self.project.expect_type(v, SType::ListPoly);
                     Expr::ListGet(scope, v, Box::new(i))
                 })
             }),
             "data_lengthoflist" => unwrap_field!(block, Field::List { LIST } => {
                 let (v, scope) = self.resolve(LIST);
-                self.project.expect_type(v, SType::ListPolymorphic);
+                self.project.expect_type(v, SType::ListPoly);
                 Expr::ListLen(scope, v)
             }),
             "argument_reporter_string_number" => unwrap_field!(block, Field::Val { VALUE } => {
@@ -449,6 +470,10 @@ impl<'src> Parser<'src> {
                         assert_eq!(t, SType::Number);
                         self.expect_type(v, SType::Number);
                     }
+                    UnOp::StrLen => {
+                        assert_eq!(t, SType::Number);
+                        self.expect_type(v, SType::Str)
+                    }
                 }
             }
             Expr::Literal(s) => {
@@ -493,7 +518,7 @@ fn validate(_target: &RawSprite) {
 }
 
 /// These correspond to function definitions in the runtime. The argument types must match!
-fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
+pub fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
     match opcode {
         "pen_setPenColorToColor" |
         "pen_setPenSizeTo" |
@@ -533,6 +558,7 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
 
 pub fn safe_str(name: &str) -> String {
     // TODO: be more rigorous than just hard coding the ones ive seen
+    // TODO: BROKEN! if the special char was only difference we loose. need to mangle
     name.replace(&['-', ' ', '.', '^', '*', '@', '=', '!', '>', '+', '-', '<', '/'], "_")
 }
 
@@ -548,11 +574,18 @@ impl Project {
             None => {
                 self.expected_types[v.0] = Some(t);
             }
-            Some(prev) => if prev != &t {
-                println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0])
+            Some(prev) => if !types_match(prev, &t) {
+                println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0]);
+                self.expected_types[v.0] = Some(SType::Poly);
             }
         }
     }
+}
+
+pub fn types_match(a: &SType, b: &SType) -> bool {
+    a == b
+        || ((a == &SType::Str || a == &SType::Number) && b == &SType::Poly)
+        || ((b == &SType::Str || b == &SType::Number) && a == &SType::Poly)
 }
 
 pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
@@ -568,7 +601,8 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
         }
         Expr::Un(op, _) =>  match op {
             UnOp::Not => Some(SType::Bool),
-            UnOp::SuffixCall(_) => Some(SType::Number),
+            UnOp::SuffixCall(_) |
+            UnOp::StrLen => Some(SType::Number),
         },
         Expr::Literal(s) => match s.as_str() {  // TODO: really need to parse this in one place
             "true" | "false" => Some(SType::Bool),

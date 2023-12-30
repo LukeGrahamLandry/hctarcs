@@ -55,11 +55,12 @@ pub enum Stmt {
     ListSet(Scope, VarId, Expr, Expr),
     ListPush(Scope, VarId, Expr),
     ListClear(Scope, VarId),
-    BroadcastWait(Expr),
+    ListRemoveIndex(Scope, VarId, Expr),
 
     // Other
     BuiltinRuntimeCall(String, Vec<Expr>),
     CallCustom(String, Vec<Expr>),  // TODO: func name should be a VarId
+    BroadcastWait(Expr),
     UnknownOpcode(String)
 }
 
@@ -79,6 +80,7 @@ pub enum Expr {
     ListGet(Scope, VarId, Box<Expr>),
     ListLen(Scope, VarId),
     StringGetIndex(Box<Expr>, Box<Expr>),
+    Empty,
 
     BuiltinRuntimeGet(String),
     Literal(String),  // TODO: parse it in parser
@@ -112,6 +114,7 @@ pub enum Scope {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UnOp {
     Not,
+    StrLen,
     SuffixCall(String),
 }
 
@@ -121,7 +124,8 @@ pub enum SType {
     Number,
     Bool,
     Str,
-    ListPolymorphic
+    ListPoly,
+    Poly
 }
 
 // #[derive(Serialize, Deserialize, Debug, Clone)]

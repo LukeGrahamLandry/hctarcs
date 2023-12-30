@@ -6,7 +6,9 @@ Currently I'm just emitting procedures in sequence all at once, but I need to do
 so I know there's a VarId already declared for the parameters when I try to call one.
 
 That works and I can infer types, but now I have to allow arguments to be polymorphic as well because
-vec_push(value) can be a num or a string. 
+vec_push(value) can be a num or a string. So I need that as more of a first class idea where if an expect_type fails,
+it can change to a polymorphic one. But I feel this will get scary and order dependent because what if someone else 
+inferred their type based on your incorrect guess. 
 
 ## async ideas (Dec 28)
 
