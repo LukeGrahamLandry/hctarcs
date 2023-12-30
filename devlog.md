@@ -20,6 +20,18 @@ On an unrelated note, i figured out the problem where message names had duplicat
 problem is that multiple names can match same safe_str after remove special characters.
 easy fix by adding a VarId in the mix and make sure not to use `safe_str` in the generated match branches of `msg_of(String)`.
 
+Fixed a few more inference places, and now I'm down to one last problematic expression: `self.local_id_454_curr_token.clone() == (0.0f64 + self.local_id_454_curr_token.clone())`.
+What does adding a number to a string do? I think even number strings don't coerce so that's checking if it's a number. 
+`"1" -> false, 1 -> true, "aaa" -> false`  
+which is a great candidate for optimising because I'm already tracking type info, but anyway, for now I think just any string is zero.
+But it thinks it's a string because you only use it as that so my inference assumes it's safe to coerce to string from the heap read
+but actually, it is polymorphic and that check is done at runtime.
+
+Alas, now I've fixed enough errors that the borrow checker actually runs, and it hates when you use length of list on both sides of an assignment. 
+Lucky that's a statement, so I can put locals. 
+
+Passes cargo check!
+
 ## async ideas (Dec 28)
 
 Do my own async, so I don't have to deal with functions closing over their mutable sprite/global arguments? 

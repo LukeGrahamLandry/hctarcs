@@ -175,18 +175,23 @@ impl Sprite<Msg, Stage> for {0} {{
             }
             Stmt::RepeatTimesCapture(times, body, v, s) => {
                 // There are no real locals so can't have name conflicts
-                format!("for i in 0..({} as usize) {{\n{} = i as f64;\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.ref_var(*s, *v), self.emit_block(body))
+                let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly));
+                let iter_expr = self.coerce(&SType::Number, "i as f64".to_string(), &var_ty);
+                format!("for i in 0..({} as usize) {{\n{} = {iter_expr};\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.ref_var(*s, *v, true), self.emit_block(body))
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
             Stmt::CallCustom(name, args) => {
                 format!("self.{name}(sprite, globals, {});\n", self.emit_args(args, &self.arg_types(name)))
             }
             Stmt::ListSet(s, v, i, item) => {
-                format!("{}[{} as usize] = {};\n", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)), self.emit_expr(item, Some(SType::Poly)))
+                let list = self.ref_var(*s, *v, true);
+                let index = self.emit_expr(i, Some(SType::Number));
+                let item = self.emit_expr(item, Some(SType::Poly));
+                format!("let index = {index} as usize; let item = {item}; {list}[index] = item;\n")
             },  // TODO: what happens on OOB?
-            Stmt::ListPush(s, v, item) => format!("{}.push(NumOrStr::from({}));\n", self.ref_var(*s, *v), self.emit_expr(item, None)),  // TODO: what happens on OOB?
-            Stmt::ListClear(s, v) => format!("{}.clear();\n", self.ref_var(*s, *v)),
-            Stmt::ListRemoveIndex(s, v, i) =>  format!("{}.remove({} as usize);\n", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
+            Stmt::ListPush(s, v, item) => format!("{}.push(NumOrStr::from({}));\n", self.ref_var(*s, *v, false), self.emit_expr(item, None)),  // TODO: what happens on OOB?
+            Stmt::ListClear(s, v) => format!("{}.clear();\n", self.ref_var(*s, *v, true)),
+            Stmt::ListRemoveIndex(s, v, i) =>  format!("{}.remove({} as usize);\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
             Stmt::BroadcastWait(name) => {
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
                 // TODO: multiple receivers HACK
@@ -257,6 +262,7 @@ impl Sprite<Msg, Stage> for {0} {{
                             } else {
                                 match (&lhs_t, &rhs_t) {
                                     (&SType::Number, &SType::Str) | (&SType::Str, &SType::Number) => Some(SType::Number),
+                                    (&SType::Poly, other) | (other, &SType::Poly) => Some(other.clone()),
                                     _ => panic!("Need rule for {:?} == {:?}", lhs_t, rhs_t)
                                 }
                             }
@@ -295,11 +301,11 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce(&found, value, &t)
             }
             Expr::GetField(v) => {
-                let e = self.ref_var(Scope::Instance, *v);
+                let e = self.ref_var(Scope::Instance, *v, false);
                 self.coerce_var(*v, e, &t)
             },
             Expr::GetGlobal(v) => {
-                let e = self.ref_var(Scope::Global, *v);
+                let e = self.ref_var(Scope::Global, *v, false);
                 self.coerce_var(*v, e, &t)
 
             },
@@ -327,9 +333,9 @@ impl Sprite<Msg, Stage> for {0} {{
                 };
                 self.coerce(&found, value, &t)
             },
-            Expr::ListLen(s, v) => format!("({}.len() as f64)", self.ref_var(*s, *v)),
+            Expr::ListLen(s, v) => format!("({}.len() as f64)", self.ref_var(*s, *v, true)),
             Expr::ListGet(s, v, i) => {
-                let value = format!("{}[{} as usize]", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)));
+                let value = format!("{}[{} as usize]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
                 self.coerce(&SType::Poly, value, &t)
             },  // TODO: what happens on OOB?
             Expr::BuiltinRuntimeGet(name) => {
@@ -337,9 +343,9 @@ impl Sprite<Msg, Stage> for {0} {{
                 self.coerce(&found, format!("sprite.{}()", name), &t)
             },
             Expr::StringGetIndex(string, index) => {
-                // TODO: cows everywhere!
+                // TODO: do this without allocating
                 // TODO: don't evaluate index twice!
-                let value = format!("Cow::from(&{0}.as_ref()[({1} as usize)..({1} as usize)+1])", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
+                let value = format!("Cow::from({0}.as_ref()[({1} as usize)..({1} as usize)+1].to_string())", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
                 self.coerce(&SType::Str, value, &t)
             }
             Expr::Empty => match t {
@@ -399,14 +405,18 @@ impl Sprite<Msg, Stage> for {0} {{
         }
     }
 
-    fn ref_var(&mut self, scope: Scope, v: VarId) -> String {
+    fn ref_var(&mut self, scope: Scope, v: VarId, place_expr: bool) -> String {
         let value = match scope {
             Scope::Instance => format!("self.{}", self.project.var_names[v.0]),
             Scope::Global => format!("globals.{}", self.project.var_names[v.0]),
         };
-        match &self.project.expected_types[v.0] {
-            Some(SType::Str) | Some(SType::Poly) => format!("{value}.clone()"),
-            _ => value
+        if place_expr {
+            value
+        } else {
+            match &self.project.expected_types[v.0] {
+                Some(SType::Str) | Some(SType::Poly) => format!("{value}.clone()"),
+                _ => value
+            }
         }
     }
 

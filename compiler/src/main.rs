@@ -14,9 +14,9 @@ fn compile(input: &str, output: &str) {
     let raw = fs::read_to_string(format!("{input}/project.json")).unwrap();
     let project = parse(raw.as_str()).unwrap();
     let project: Project = project.into();
-    println!();
-    println!("{:?}", project);
-    println!();
+    for (i, name) in project.var_names.iter().enumerate() {
+        println!("   - VarId({i}) = {name} is a {:?}", project.expected_types[i])
+    }
     create_dir_all(format!("{output}/src")).unwrap();
     fs::write(format!("{output}/src/main.rs"), emit_rust(&project)).unwrap();
     fs::write(format!("{output}/Cargo.toml"), CARGO_TOML).unwrap();

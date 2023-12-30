@@ -439,17 +439,23 @@ impl<'src> Parser<'src> {
             Expr::Bin(op, rhs, lhs) => {
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow | BinOp::Mod => {
-                        assert_eq!(t, SType::Number);
+                        assert!(matches!(t, SType::Number | SType::Poly));
                         self.expect_type(rhs, SType::Number);
                         self.expect_type(lhs, SType::Number);
                     }
                     BinOp::GT | BinOp::LT => {
-                        assert_eq!(t, SType::Bool);
+                        assert!(matches!(t, SType::Number | SType::Bool));
                         self.expect_type(rhs, SType::Number);
                         self.expect_type(lhs, SType::Number);
                     }
                     BinOp::EQ => {
                         assert_eq!(t, SType::Bool);
+                        let a = self.infer_type(lhs);
+                        let b = self.infer_type(rhs);
+                        if a != b {
+                            self.expect_type(lhs, SType::Poly);
+                            self.expect_type(rhs, SType::Poly);
+                        }
                     },
                     BinOp::And | BinOp::Or => {
                         assert_eq!(t, SType::Bool);
@@ -457,7 +463,7 @@ impl<'src> Parser<'src> {
                         self.expect_type(lhs, SType::Bool);
                     }
                     BinOp::StrJoin => {
-                        assert_eq!(t, SType::Str);
+                        assert!(matches!(t, SType::Str | SType::Poly));
                         self.expect_type(rhs, SType::Str);
                         self.expect_type(lhs, SType::Str);
                     }
@@ -480,10 +486,13 @@ impl<'src> Parser<'src> {
                 }
             }
             Expr::Literal(s) => {
+                if t == SType::Poly {
+                    return;
+                }
                 match s.as_str() {  // TODO: really need to parse this in one place
-                    "true" | "false" => assert_eq!(t, SType::Bool),
-                    "Infinity" | "-Infinity" => assert_eq!(t, SType::Number),
-                    "" => assert!(t == SType::Number || t == SType::Str),
+                    "true" | "false" => assert!(matches!(t, SType::Bool | SType::Str)),
+                    "Infinity" | "-Infinity" => assert!(matches!(t, SType::Number)),
+                    "" => assert!(matches!(t, SType::Number | SType::Str)),
                     _ => match s.parse::<f64>() {
                         Ok(_) => assert_eq!(t, SType::Number),
                         Err(_) => assert_eq!(t, SType::Str),
@@ -624,6 +633,7 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
                 Err(_) => Some(SType::Str),
             }
         },
+        Expr::StringGetIndex(_, _) => Some(SType::Str),
         Expr::BuiltinRuntimeGet(s) => {
             match s.as_ref() {
                 "sensing_answer" => Some(SType::Str),

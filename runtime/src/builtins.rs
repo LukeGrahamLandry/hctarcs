@@ -140,9 +140,7 @@ impl NumOrStr {
     pub fn to_num(&self) -> f64 {
         match self {
             NumOrStr::Num(n) => *n,
-            NumOrStr::Str(s) => todo!("Tried to convert {:?} to number.", s),
-            NumOrStr::Empty => 0.0f64,
-            NumOrStr::Bool(s) => todo!("Tried to convert {:?} to number.", s),
+            NumOrStr::Str(_) |   NumOrStr::Empty | NumOrStr::Bool(_) => 0.0,
         }
     }
 
