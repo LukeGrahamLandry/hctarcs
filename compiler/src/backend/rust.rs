@@ -10,15 +10,15 @@ pub fn emit_rust(project: &Project) -> String {
         )
         .flatten()
         .filter(|t| matches!(t, Trigger::Message(_)))
-        .collect(); // TODO: Im not convinced this has no duplicates
-                    //       Figured it out! problem is that multiple names can match same safe_str after remove special characters
+        .collect();
     let msg_fields: HashSet<String> = msgs.iter().map(|t| {
         let name = match t {
             Trigger::Message(name) => name,
             _ => unreachable!(),
         };
-        format!("{}, \n", safe_str(name))
+        format!("{}, \n", trigger_msg_ident(project, *name))
     }).collect();
+    assert_eq!(msg_fields.len(), msgs.len(), "lost some to mangling dup names");
     let msg_fields: String = msg_fields.into_iter().collect();
     let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new() }.emit()).collect();
     let sprites: String = project.targets
@@ -31,7 +31,7 @@ pub fn emit_rust(project: &Project) -> String {
             Trigger::Message(name) => name,
             _ => unreachable!(),
         };
-        format!("\"{}\"=>Msg::{}, \n", name.escape_default(), safe_str(name))
+        format!("\"{}\"=>Msg::{}, \n", project.var_names[name.0].escape_default(), trigger_msg_ident(project, *name))
     }).collect();
 
     format!(r#"
@@ -53,10 +53,15 @@ fn msg_of(value: Cow<str>) -> Msg {{
     {body}"#)
 }
 
+fn trigger_msg_ident(project: &Project, v: VarId) -> String {
+    format!("M{}_{}", v.0, safe_str(&project.var_names[v.0]))
+}
+
+
 fn format_trigger(project: &Project, value: &Trigger) -> String {
     match value {
         Trigger::FlagClicked => "Trigger::FlagClicked".to_string(),
-        Trigger::Message(name) => format!("Trigger::Message(Msg::{})", safe_str(name)),
+        Trigger::Message(name) => format!("Trigger::Message(Msg::{})", trigger_msg_ident(project, *name)),
     }
 }
 
@@ -159,6 +164,9 @@ impl Sprite<Msg, Stage> for {0} {{
             Stmt::If(cond, body) => {
                 format!("if {} {{\n{} }}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body))
             }
+            Stmt::RepeatUntil(cond, body) => { // TODO: is this supposed to be do while?
+                format!("while !({}) {{\n{} }}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body))
+            }
             Stmt::IfElse(cond, body, body2) => {
                 format!("if {} {{\n{} }} else {{\n{}}}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body), self.emit_block(body2))
             }
@@ -217,6 +225,8 @@ impl Sprite<Msg, Stage> for {0} {{
                     BinOp::Sub => Some("-"),
                     BinOp::Mul => Some("*"),
                     BinOp::Div => Some("/"),
+                    // TODO: do scratch and rust agree on mod edge cases (floats and negatives)?
+                    BinOp::Mod => Some("%"),
                     BinOp::GT => Some(">"),
                     BinOp::LT => Some("<"),
                     BinOp::EQ => Some("=="),
@@ -225,13 +235,13 @@ impl Sprite<Msg, Stage> for {0} {{
                     _ => None
                 };
                 let arg_t = match op {
-                    BinOp::Pow |BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::GT | BinOp::Random | BinOp::LT => Some(SType::Number),
+                    BinOp::Pow |BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::GT | BinOp::Random | BinOp::LT | BinOp::Mod => Some(SType::Number),
                     BinOp::And | BinOp::Or => Some(SType::Bool),
                     BinOp::StrJoin => Some(SType::Str),
                     BinOp::EQ => None,
                 };
                 let out_t = match op {
-                    BinOp::Pow | BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random => SType::Number,
+                    BinOp::Pow | BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Mod => SType::Number,
                     BinOp::EQ | BinOp::GT | BinOp::LT | BinOp::And | BinOp::Or => SType::Bool,
                     BinOp::StrJoin => SType::Str,
                 };
@@ -269,7 +279,7 @@ impl Sprite<Msg, Stage> for {0} {{
                     return self.coerce(&SType::Number, format!("builtins::dyn_rand({}, {})", a, b), &t)
                 }
                 if *op == BinOp::Pow {
-                    return self.coerce(&SType::Number, format!("{}.pow({})", a, b), &t)
+                    return self.coerce(&SType::Number, format!("{}.powf({})", a, b), &t)
                 }
                 if *op == BinOp::StrJoin {
                     return self.coerce(&SType::Str, format!("Cow::from({}.to_string() + {}.as_ref())", a, b), &t)
@@ -280,7 +290,7 @@ impl Sprite<Msg, Stage> for {0} {{
                 let (found, value) = match op {
                     UnOp::Not => (SType::Bool, format!("(!{})", self.emit_expr(e, Some(SType::Bool)))),
                     UnOp::SuffixCall(name) => (SType::Number, format!("({}.{name}())", self.emit_expr(e, Some(SType::Number)))),
-                    UnOp::StrLen => (SType::Number, format!("{}.as_ref().len()", self.emit_expr(e, Some(SType::Str)))),
+                    UnOp::StrLen => (SType::Number, format!("({}.as_ref().len() as f64)", self.emit_expr(e, Some(SType::Str)))),
                 };
                 self.coerce(&found, value, &t)
             }
@@ -322,7 +332,10 @@ impl Sprite<Msg, Stage> for {0} {{
                 let value = format!("{}[{} as usize]", self.ref_var(*s, *v), self.emit_expr(i, Some(SType::Number)));
                 self.coerce(&SType::Poly, value, &t)
             },  // TODO: what happens on OOB?
-            Expr::BuiltinRuntimeGet(name) => format!("sprite.{}()", name),
+            Expr::BuiltinRuntimeGet(name) => {
+                let found = infer_type(self.project, expr).unwrap_or_else(|| panic!("Failed to infer return type of BuiltinRuntimeGet {name}"));
+                self.coerce(&found, format!("sprite.{}()", name), &t)
+            },
             Expr::StringGetIndex(string, index) => {
                 // TODO: cows everywhere!
                 // TODO: don't evaluate index twice!
@@ -357,15 +370,14 @@ impl Sprite<Msg, Stage> for {0} {{
         if want == &SType::Poly {
             assert!(!value.starts_with("NumOrStr::from"));
             return match found {
-                &SType::Number => format!("NumOrStr::from({value})"),
+                &SType::Number | &SType::Bool => format!("NumOrStr::from({value})"),
                 &SType::Str => format!("NumOrStr::from({value}.clone())"),
                 _ => {
                     println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
                     value
                 },
             };
-        }
-        else if found == &SType::Poly {
+        } else if found == &SType::Poly {
             assert!(!value.ends_with(".to_num()"));
             assert!(!value.ends_with(".to_str()"));
             return match want {
@@ -377,6 +389,10 @@ impl Sprite<Msg, Stage> for {0} {{
                     value
                 }
             }
+        } else if want == &SType::Str && found == &SType::Number {
+            // TODO: this is only valid in string concat, otherwise probably an inference bug?
+            println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
+            return format!("{value}.to_string()")
         } else {
             println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
             return value

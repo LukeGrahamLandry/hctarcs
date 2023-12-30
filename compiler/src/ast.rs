@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -5,6 +6,7 @@ pub struct Project {
     pub targets: Vec<Sprite>,
     pub var_names: Vec<String>,
     pub expected_types: Vec<Option<SType>>,
+    pub triggers_by_name: HashMap<String, VarId>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -42,9 +44,9 @@ pub enum Stmt {
     // Repeat(Vec<Stmt>),
     RepeatTimes(Expr, Vec<Stmt>),
     If(Expr, Vec<Stmt>),
+    RepeatUntil(Expr, Vec<Stmt>),
     IfElse(Expr, Vec<Stmt>, Vec<Stmt>),
     // WaitUntil(Expr),
-    // RepeatUntil(Expr, Vec<Stmt>),
     StopScript,
     Exit,
     RepeatTimesCapture(Expr, Vec<Stmt>, VarId, Scope),
@@ -99,6 +101,7 @@ pub enum BinOp {
     And,
     Or,
     Pow,
+    Mod,
     StrJoin,
     // StrLetterOf,
     // StrContains,
@@ -143,11 +146,11 @@ pub enum SType {
 //     Pos { x: f64, y: f64 },
 // }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub enum Trigger {
     FlagClicked,
-    /// NOT a safe_str
-    Message(String), // TODO: VarId ?
+    /// Corresponding name is NOT a safe_str
+    Message(VarId),
     // KeyPressed(KeyId),
     // ThisSpriteClicked,
     // BackdropSwitch(BackdropId),

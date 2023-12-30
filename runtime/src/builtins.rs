@@ -66,6 +66,34 @@ impl SpriteBase {
         self.y
     }
 
+    pub fn sensing_answer(&self) -> Cow<'static, str> {
+        Cow::from("TODO: sensing_answer not implemented yet.")
+    }
+
+    pub fn pen_stamp(&self) {
+        todo!("pen_stamp")
+    }
+
+    pub fn looks_hide(&self) {
+        todo!("looks_hide")
+    }
+
+    pub fn pen_clear(&self) {
+        todo!("pen_clear")
+    }
+
+    pub fn looks_setsizeto(&self, size: f64) {
+        todo!("looks_setsizeto")
+    }
+
+    pub fn looks_switchcostumeto(&self, costume: Cow<'static, str>) {
+        todo!("looks_switchcostumeto")
+    }
+
+    pub fn sensing_askandwait(&self) {
+        todo!("sensing_askandwait")
+    }
+
     fn pos(&self) -> (f64, f64) {
         (self.x, self.y)
     }
@@ -80,6 +108,7 @@ impl SpriteBase {
             })
         }
     }
+
 }
 
 thread_local! {
@@ -97,11 +126,12 @@ pub fn dyn_rand(min: f64, max: f64) -> f64 {
 }
 
 // TODO: avoid this whenever possible
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub enum NumOrStr {
     Num(f64),
     Str(Cow<'static, str>),
     Bool(bool),
+    #[default]
     Empty
 }
 
@@ -119,9 +149,10 @@ impl NumOrStr {
     // TODO: you want to call the version with ownership when possible
     pub fn to_str(&self) -> Cow<'static, str> {
         match self {
-            NumOrStr::Num(n) => todo!("Tried to convert {:?} to string.", n),
+            NumOrStr::Num(n) => Cow::from(n.to_string()),  // TODO: this is a bit fishy
             NumOrStr::Str(s) => s.clone(),
             NumOrStr::Empty => Cow::from(""),
+            // TODO: optimisation pass that makes sure you're not doing this because you're comparing to a string literal
             NumOrStr::Bool(b) => if *b { Cow::from("true") } else { Cow::from("false") },
         }
     }

@@ -10,6 +10,16 @@ vec_push(value) can be a num or a string. So I need that as more of a first clas
 it can change to a polymorphic one. But I feel this will get scary and order dependent because what if someone else 
 inferred their type based on your incorrect guess. 
 
+TODO: have a borrowed from of to_str for checking equality from a list, etc.
+
+what happens when you put a bool in a list? does it just become the string? Yep. 
+Ok so bool is a valid polymorph type I guess. 
+cause then I can notice that if you're checking equal to the string true and do it faster. 
+
+On an unrelated note, i figured out the problem where message names had duplicates.
+problem is that multiple names can match same safe_str after remove special characters.
+easy fix by adding a VarId in the mix and make sure not to use `safe_str` in the generated match branches of `msg_of(String)`.
+
 ## async ideas (Dec 28)
 
 Do my own async, so I don't have to deal with functions closing over their mutable sprite/global arguments? 

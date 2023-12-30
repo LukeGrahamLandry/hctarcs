@@ -123,6 +123,12 @@ pub enum Input {
     Str {
         STRING: Operand,
     },
+    Size {
+        SIZE: Operand,
+    },
+    Costume {
+        COSTUME: Operand
+    },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty
     Named(HashMap<String, Operand>),
@@ -218,6 +224,8 @@ impl Input {
             Input::NumUn { NUM } => NUM,
             Input::Val { VALUE } => VALUE,
             Input::Colour { COLOR } => COLOR,
+            Input::Size { SIZE } => SIZE,
+            Input::Costume { COSTUME } => COSTUME,
             Input::Custom { custom_block } => custom_block,
             Input::Named(vals) => if vals.len() == 1 {
                     vals.iter().next().unwrap().1

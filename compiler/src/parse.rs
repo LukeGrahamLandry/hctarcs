@@ -24,7 +24,7 @@ macro_rules! unwrap_field {
 
 impl From<ScratchProject> for Project {
     fn from(value: ScratchProject) -> Self {
-        let mut proj = Project { targets: vec![], var_names: vec![], expected_types: vec![] };
+        let mut proj = Project { targets: vec![], var_names: vec![], expected_types: vec![], triggers_by_name: HashMap::new() };
 
         let mut stages = value.targets.iter().filter(|t| t.isStage);
         let stage = stages.next().unwrap();
@@ -44,7 +44,7 @@ impl From<ScratchProject> for Project {
 fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
     let mut expand = | (_, v): (&String, &Operand)| {
         let name = v.unwrap_var();
-        (name.to_string(), proj.next_var(name))
+        (name.to_string(), proj.next_var(name, true))
     };
     let mut a: HashMap<String, VarId> = target.variables.iter().map(&mut expand).collect();
     a.extend(target.lists.iter().map(&mut expand));
@@ -83,7 +83,7 @@ impl<'src> Parser<'src> {
                 assert_eq!(proto.opcode, "procedures_prototype");
                 let proto = proto.mutation.as_ref().unwrap();
                 // TODO: arg names are not globally unique
-                let args: Vec<_> = proto.arg_names().iter().map(|n| self.project.next_var(n)).collect();
+                let args: Vec<_> = proto.arg_names().iter().map(|n| self.project.next_var(n, true)).collect();
                 println!("Decl proc {}", proto.name());
                 (proto.name().to_string(), ProcProto {
                     args_by_name: proto.arg_names().iter().zip(args.iter()).map(|(k, v)| (k.clone(), *v)).collect(),
@@ -152,6 +152,9 @@ impl<'src> Parser<'src> {
             }),
             "control_if" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
                 Stmt::If(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()))
+            }),
+            "control_repeat_until" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
+                Stmt::RepeatUntil(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()))
             }),
             "control_repeat" => unwrap_input!(block, Input::ForLoop { TIMES, SUBSTACK } => {
                 Stmt::RepeatTimes(self.parse_t(TIMES, SType::Number), self.parse_body(SUBSTACK.opt_block()))
@@ -267,10 +270,10 @@ impl<'src> Parser<'src> {
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 let args = match proto {
                     &[] => vec![],
-                    &[SType::Number] => vec![self.parse_t(block.inputs.as_ref().unwrap().unwrap_one(), SType::Number)],
-                    &[SType::Number, SType::Number] => {
+                    [arg_t] => vec![self.parse_t(block.inputs.as_ref().unwrap().unwrap_one(), arg_t.clone())],
+                    [a_t, b_t] => {
                         let (a, b) = block.inputs.as_ref().unwrap().unwrap_pair();
-                        let (a, b) = (self.parse_t(a, SType::Number), self.parse_t(b, SType::Number));
+                        let (a, b) = (self.parse_t(a, a_t.clone()), self.parse_t(b, b_t.clone()));
                         vec![a, b]
                     }
 
@@ -435,7 +438,7 @@ impl<'src> Parser<'src> {
                 => self.project.expect_type(*v, t),
             Expr::Bin(op, rhs, lhs) => {
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow => {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow | BinOp::Mod => {
                         assert_eq!(t, SType::Number);
                         self.expect_type(rhs, SType::Number);
                         self.expect_type(lhs, SType::Number);
@@ -500,7 +503,15 @@ impl<'src> Parser<'src> {
             "event_whenflagclicked" => Trigger::FlagClicked,
             "event_whenbroadcastreceived" => unwrap_field!(block, Field::Msg { BROADCAST_OPTION } => {
                 let target = BROADCAST_OPTION.unwrap_var();
-                Trigger::Message(target.to_string())
+                let v = match self.project.triggers_by_name.get(target) {
+                    Some(&v) => v,
+                    None => {
+                        let v = self.project.next_var(target, false);
+                        self.project.triggers_by_name.insert(target.to_string(), v);
+                        v
+                    }
+                };
+                Trigger::Message(v)
             }),
             _ => todo!("Unknown trigger {}", block.opcode)
         }
@@ -520,15 +531,13 @@ fn validate(_target: &RawSprite) {
 /// These correspond to function definitions in the runtime. The argument types must match!
 pub fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
     match opcode {
-        "pen_setPenColorToColor" |
-        "pen_setPenSizeTo" |
-        "motion_changexby" |
-        "motion_changeyby"|
-        "motion_setx"|
-        "motion_sety" => Some(&[SType::Number]),
-        "pen_penUp" |
-        "pen_penDown" => Some(&[]),
+        "pen_setPenColorToColor" | "pen_setPenSizeTo" | "motion_changexby" | "motion_changeyby" | "motion_setx"
+        | "motion_sety" | "looks_setsizeto"
+        => Some(&[SType::Number]),
+        "pen_penUp" | "pen_stamp" | "looks_hide" | "pen_clear" | "pen_penDown" | "sensing_askandwait" /* TODO: this will be async */
+            => Some(&[]),
         "motion_gotoxy" => Some(&[SType::Number, SType::Number]),
+        "looks_switchcostumeto" => Some(&[SType::Str]),
         _ => None
     }
 }
@@ -549,6 +558,7 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
         "operator_or" => Some(Or),
         "operator_gt" => Some(GT),
         "operator_lt" => Some(LT),
+        "operator_mod" => Some(Mod),
         "operator_equals" => Some(EQ),
         "operator_random" => Some(Random),
         "operator_mathop" => None,  // TODO: block.fields[OPERATOR] == function name
@@ -563,8 +573,9 @@ pub fn safe_str(name: &str) -> String {
 }
 
 impl Project {
-    fn next_var(&mut self, name: &str) -> VarId {
-        self.var_names.push(safe_str(name));
+    // safe_str is used by message triggers
+    fn next_var(&mut self, name: &str, make_safe: bool) -> VarId {
+        self.var_names.push(if make_safe { safe_str(name) } else { name.to_string() });
         self.expected_types.push(None);
         VarId(self.var_names.len()-1)
     }
@@ -594,7 +605,7 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
         => project.expected_types[v.0].clone(),
         Expr::Bin(op, ..) => {
             match op {
-                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow => Some(SType::Number),
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Random | BinOp::Pow | BinOp::Mod => Some(SType::Number),
                 BinOp::GT | BinOp::LT | BinOp::EQ | BinOp::And | BinOp::Or => Some(SType::Bool),
                 BinOp::StrJoin => Some(SType::Str),
             }
@@ -613,6 +624,13 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
                 Err(_) => Some(SType::Str),
             }
         },
+        Expr::BuiltinRuntimeGet(s) => {
+            match s.as_ref() {
+                "sensing_answer" => Some(SType::Str),
+                "motion_xposition" | "motion_yposition" => Some(SType::Number),
+                _ => None,
+            }
+        }
         _ => None
     }
 }
