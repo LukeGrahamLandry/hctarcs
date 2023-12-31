@@ -4,72 +4,83 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
 use std::io::{stdout, Write};
+use std::marker::PhantomData;
+use crate::backend::RenderBackend;
 use crate::poly::Str;
-use crate::sprite::{Line, SpriteBase};
+use crate::sprite::{Line, Sprite, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
 pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
 
+// TODO: it seems ive gone overboard with the generics
+pub struct FrameCtx<'a, Msg: Copy, Globals, R: RenderBackend> {
+    pub sprite: &'a mut SpriteBase,
+    // pub vars: &'a mut S,
+    pub globals: &'a mut Globals,
+    pub render: &'a mut R,
+    pub _p: PhantomData<Msg>
+}
+
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
-impl SpriteBase {
+impl<'a, Msg: Copy, Globals, R: RenderBackend> FrameCtx<'a, Msg, Globals, R> {
     pub fn pen_setPenColorToColor(&mut self, colour: f64) {
-        self.pen.colour.0 = colour.max(0.0) as u32;
+        self.sprite.pen.colour.0 = colour.max(0.0) as u32;
     }
 
     pub fn pen_setPenSizeTo(&mut self, size: f64) {
-        self.pen.size = size;
+        self.sprite.pen.size = size;
     }
 
     pub fn pen_penUp(&mut self) {
-        self.pen.down = false;
+        self.sprite.pen.down = false;
     }
 
     pub fn pen_penDown(&mut self) {
-        self.pen.down = true;
+        self.sprite.pen.down = true;
     }
 
     pub fn motion_changexby(&mut self, dx: f64) {
         let old = self.pos();
-        self.x = (self.x + dx).clamp(-HALF_SCREEN_WIDTH, HALF_SCREEN_WIDTH);
+        self.sprite.x = (self.sprite.x + dx).clamp(-HALF_SCREEN_WIDTH, HALF_SCREEN_WIDTH);
         self.draw(old);
     }
 
     pub fn motion_changeyby(&mut self, dy: f64) {
         let old = self.pos();
-        self.y = (self.y + dy).clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
+        self.sprite.y = (self.sprite.y + dy).clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
         self.draw(old);
-        println!();  // TODO: hack for line break tres
+        // println!();  // TODO: hack for line break tres
     }
 
     pub fn motion_setx(&mut self, x: f64) {
         let old = self.pos();
-        self.x = x.clamp(-HALF_SCREEN_WIDTH, HALF_SCREEN_WIDTH);
+        self.sprite.x = x.clamp(-HALF_SCREEN_WIDTH, HALF_SCREEN_WIDTH);
         self.draw(old);
     }
 
     pub fn motion_sety(&mut self, y: f64) {
         let old = self.pos();
-        self.y = y.clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
+        self.sprite.y = y.clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
         self.draw(old);
     }
 
     pub fn motion_gotoxy(&mut self, x: f64, y: f64) {
         let old = self.pos();
-        self.x = x.clamp(-HALF_SCREEN_WIDTH, HALF_SCREEN_WIDTH);
-        self.y = y.clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
+        self.sprite.x = x.clamp(-HALF_SCREEN_WIDTH, HALF_SCREEN_WIDTH);
+        self.sprite.y = y.clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
         self.draw(old);
     }
 
     pub fn motion_xposition(&self) -> f64 {
-        self.x
+        self.sprite.x
     }
 
     pub fn motion_yposition(&self) -> f64 {
-        self.y
+        self.sprite.y
     }
 
     pub fn sensing_answer(&self) -> Str {
-        Str::Owned(self.last_answer.clone())
+        Str::Owned(self.sprite.last_answer.clone())
     }
 
     // TODO
@@ -104,7 +115,7 @@ impl SpriteBase {
     pub fn sensing_askandwait(&mut self) {
         let mut line = String::new();
         std::io::stdin().read_line(&mut line).unwrap();
-        self.last_answer = line;  // TODO: trim new-line?
+        self.sprite.last_answer = line;  // TODO: trim new-line?
     }
 
     pub fn looks_say(&self, msg: Str) {
@@ -112,16 +123,16 @@ impl SpriteBase {
     }
 
     fn pos(&self) -> (f64, f64) {
-        (self.x, self.y)
+        (self.sprite.x, self.sprite.y)
     }
 
     fn draw(&mut self, old: (f64, f64)) {
-        if self.pen.down {
-            self.lines.push(Line {
+        if self.sprite.pen.down {
+            self.sprite.lines.push(Line {
                 start: old,
                 end: self.pos(),
-                size: self.pen.size,
-                colour: self.pen.colour,
+                size: self.sprite.pen.size,
+                colour: self.sprite.pen.colour,
             })
         }
     }

@@ -13,12 +13,13 @@
     (do-work)
     )
 
-  ; seperate to enable Run without screen referesh 
+  ; separate to enable Run without screen refresh
   (proc (do-work)
     (variables half-width half-height x y)
       (set-xy "-Infinity" "Infinity")
       (:= half-width (- x-pos))
       (:= half-height y-pos)
+      ; TODO: i wonder if this iteration order is slower
       (for x (* 2 half-width)
         (pen-up)
         (set-xy (- x half-width) (- half-height))
@@ -43,6 +44,7 @@
     (:= cX xx)
     (:= cY yy)
     (:= steps 0)
+    ; TODO: why im I being dumb here. we have a while loop (or until i guess but whatever)
     (for counter max-steps
       (if (< (+ zSqX zSqY) 4)
         (do (:= zY (* (* 2 zX) zY))

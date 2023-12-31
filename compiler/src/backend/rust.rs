@@ -37,7 +37,7 @@ pub fn emit_rust(project: &Project) -> String {
     format!(r#"
 {HEADER}
 fn main() {{
-    World::run_program(Stage::default(), vec![{sprites}])
+    SoftBackend::run(World::new(Stage::default(), vec![{sprites}]))
 }}
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 enum Msg {{
@@ -96,6 +96,11 @@ const HEADER: &str = r#"
 use runtime::sprite::{SpriteBase, Sprite, Trigger};
 use runtime::{builtins, World};
 use runtime::poly::{Poly, Str, List};
+use runtime::backend::RenderBackend;
+use runtime::backend::softbuffer::*;
+use runtime::builtins::FrameCtx;
+type Backend = SoftBackend;
+type Ctx<'a> = FrameCtx<'a, Msg, Stage, Backend>;
 "#;
 
 
@@ -113,7 +118,7 @@ impl<'src> Emit<'src> {
                 }).collect();
                 format!(", {}", args.join(", "))
             };
-            format!("fn {}(&mut self, sprite: &mut SpriteBase, globals: &mut Stage{}){{\n{}}}\n\n", t.name, args, self.emit_block(&t.body))
+            format!("fn {}(&mut self, ctx: &mut Ctx{}){{\n{}}}\n\n", t.name, args, self.emit_block(&t.body))
         }).collect();
         for func in &self.target.functions {
             let body = self.emit_block(&func.body);
@@ -134,8 +139,8 @@ pub struct {0} {{
 impl {0} {{
 {procs}
 }}
-impl Sprite<Msg, Stage> for {0} {{
-    fn receive(&mut self, sprite: &mut SpriteBase, globals: &mut Stage, msg: Trigger<Msg>) {{
+impl Sprite<Msg, Stage, Backend> for {0} {{
+    fn receive(&mut self, ctx: &mut Ctx, msg: Trigger<Msg>) {{
         match msg {{
             {handlers}
             _ => {{}}  // Ignored.
@@ -143,7 +148,7 @@ impl Sprite<Msg, Stage> for {0} {{
     }}
 
     // Grumble grumble object safety...
-    fn clone_boxed(&self) -> Box<dyn Sprite<Msg, Stage>> {{ Box::new(self.clone()) }}
+    fn clone_boxed(&self) -> Box<dyn Sprite<Msg, Stage, Backend>> {{ Box::new(self.clone()) }}
 }}"##, self.target.name)
     }
 
@@ -152,13 +157,13 @@ impl Sprite<Msg, Stage> for {0} {{
         match stmt {
             Stmt::BuiltinRuntimeCall(name, args) => {
                 let arg_types: Vec<_> = runtime_prototype(name).unwrap().iter().map(|t| Some(t.clone())).collect();
-                format!("sprite.{}({});\n", name, self.emit_args(args, &arg_types))
+                format!("ctx.{}({});\n", name, self.emit_args(args, &arg_types))
             },
             Stmt::SetField(v, e) => {
                 format!("self.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
             }
             Stmt::SetGlobal(v, e) => {
-                format!("globals.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
+                format!("ctx.globals.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
             }
             Stmt::If(cond, body) => {
                 format!("if {} {{\n{} }}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body))
@@ -180,7 +185,7 @@ impl Sprite<Msg, Stage> for {0} {{
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
             Stmt::CallCustom(name, args) => {
-                format!("self.{name}(sprite, globals, {});\n", self.emit_args(args, &self.arg_types(name)))
+                format!("self.{name}(ctx, {});\n", self.emit_args(args, &self.arg_types(name)))
             }
             Stmt::ListSet(s, v, i, item) => {
                 let list = self.ref_var(*s, *v, true);
@@ -196,7 +201,7 @@ impl Sprite<Msg, Stage> for {0} {{
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
                 // TODO: multiple receivers HACK
                 assert!(self.target.is_singleton);
-                format!("self.receive(sprite, globals, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
+                format!("self.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
             }
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         }
@@ -343,7 +348,7 @@ impl Sprite<Msg, Stage> for {0} {{
             },
             Expr::BuiltinRuntimeGet(name) => {
                 let found = infer_type(self.project, expr).unwrap_or_else(|| panic!("Failed to infer return type of BuiltinRuntimeGet {name}"));
-                self.coerce(&found, format!("sprite.{}()", name), &t)
+                self.coerce(&found, format!("ctx.{}()", name), &t)
             },
             Expr::StringGetIndex(string, index) => {
                 let value = format!("{}.get_index({})", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
@@ -414,7 +419,7 @@ impl Sprite<Msg, Stage> for {0} {{
     fn ref_var(&mut self, scope: Scope, v: VarId, place_expr: bool) -> String {
         let value = match scope {
             Scope::Instance => format!("self.{}", self.project.var_names[v.0]),
-            Scope::Global => format!("globals.{}", self.project.var_names[v.0]),
+            Scope::Global => format!("ctx.globals.{}", self.project.var_names[v.0]),
         };
         if place_expr {
             value

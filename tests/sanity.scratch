@@ -67,6 +67,9 @@
     ; (delete-all lst)
     ; (eq "" (!! lst 5) "list oob")
 
+    ; TODO: mod edge cases
+    ; TODO: float edge cases
+
     )
 
   (proc (when-flag-clicked)

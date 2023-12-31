@@ -1,8 +1,8 @@
 
-## refactoring rendering
+## refactoring rendering (Dec 31)
 
 Plan: 
-I think is should separate the simulation world that owns the sprites and globals from the
+I think I should separate the simulation world that owns the sprites and globals from the
 driver that runs the event loop. Maybe all the sprite methods become fn (ctx: Ctx<Self>, ...args)
 where Ctx { &mut vars, &mut sprite, &mut globals, &mut BackendFrameCtx }
 and then you call builtins on that context and its able to do things like render immediately instead of buffering your lines.
@@ -10,8 +10,13 @@ and that would permit different rendering backends in a less painful way.
 main would become something like BackendImpl::run(World::new(..))
 and you want as much logic as possible to be in the world and the backend to just
 emit input events and accept render commands .
-need to do it bit by bit so it always compiles throughout the process or im gonna get bored of it when it sucks,
+need to do it bit by bit, so it always compiles throughout the process or im gonna get bored of it when it sucks,
 but the end goal is being able to drop in a wasm/canvas backend as well.
+
+TODO: 
+I should also think about splitting up the compiler backend more because currently the rust thing 
+is doing a lot of type coercing work that would need to be replicated if I wanted to add a c one for example. 
+Maybe a new pass that adds explicit cast expressions and later that can also split functions across await points. 
 
 ## Great Success (Dec 30)
 
@@ -29,10 +34,13 @@ very pleasing to be able to run it in a second and make sure i didn't make any d
 I don't quite feel prepared for doing it in the tres language yet but let's do a scratch one as a start.
 Mistakes I made: missing else branch on if, how do you have a unit statement?
 oh then & else were macros, and you need `do` to create a block with multiple things
+TODO: can I make their compiler emit the stacks not all over-lapping each-other? did they manually rearrange for their shared scratch versions? 
 
 TODO: write a note in the readme about using turbo mode and run without screen refresh
 with all logic in a custom block for fair comparisons because i almost thought mine was way better
 than it actually is because i havent implemented yielding yet, so it cheats. 
+
+Update: [they took my fix](https://github.com/Johan-Mi/scratch-compiler/pull/12)! very pleasing :)
 
 ## try running tres (Dec 29)
 
