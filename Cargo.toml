@@ -8,6 +8,7 @@ exclude = [
     "target/scratch_out",  # Generated
     "target/scratch_out_tres",  # Generated
     "target/scratch_out_sanity",  # Generated
+    "target/scratch_out_mandelbrot" # Generated
 ]
 resolver = "2"
 

@@ -5,7 +5,7 @@
 use std::any::Any;
 use crate::sprite::{Sprite, SpriteBase};
 
-pub enum IoAction<Msg: Copy + Clone> {
+pub enum IoAction<Msg: Copy> {
     WaitSecs(f64),
     Ask(String),
     BroadcastWait(Msg),
@@ -14,7 +14,7 @@ pub enum IoAction<Msg: Copy + Clone> {
     None
 }
 
-pub struct IO<Msg: Copy + Clone> {
+pub struct IO<Msg: Copy> {
     action: IoAction<Msg>,
     owner: usize,  // Which instance requested this action
     func: Option<FuncId>,  // Which function should we call when the action is done,

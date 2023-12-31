@@ -31,6 +31,7 @@ build_test() {
 }
 
 build_test "sanity"
+build_test "mandelbrot"
 
 build_vendor "linrays"
 

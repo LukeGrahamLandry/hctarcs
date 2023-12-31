@@ -15,16 +15,15 @@ pub mod callback;
 pub mod poly;
 
 /// Types for Msg and Globals are generated for a specific scratch program by the compiler.
-/// The default form of message must be FlagClicked
-// TODO: needs to be a super of some builtin enum for other events the runtime needs to send
-pub struct World<Msg: Clone + Copy, Globals> {
+/// This crate needs to be generic over the user program but there will only ever be one instantiation of this generic in a given application.
+pub struct World<Msg: Copy, Globals> {
     pub bases: VecDeque<SpriteBase>,
     pub custom: VecDeque<Box<dyn Sprite<Msg, Globals>>>,
     pub globals: Globals,
     pub messages: VecDeque<Msg>
 }
 
-impl<Msg: Clone + Copy, Globals> World<Msg, Globals> {
+impl<Msg: Copy, Globals> World<Msg, Globals> {
     /// This function does not return until the program is over.
     pub fn run_program(globals: Globals, custom: Vec<Box<dyn Sprite<Msg, Globals>>>) {
         credits();

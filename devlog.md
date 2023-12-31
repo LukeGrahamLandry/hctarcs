@@ -1,4 +1,39 @@
 
+## refactoring rendering
+
+Plan: 
+I think is should separate the simulation world that owns the sprites and globals from the
+driver that runs the event loop. Maybe all the sprite methods become fn (ctx: Ctx<Self>, ...args)
+where Ctx { &mut vars, &mut sprite, &mut globals, &mut BackendFrameCtx }
+and then you call builtins on that context and its able to do things like render immediately instead of buffering your lines.
+and that would permit different rendering backends in a less painful way.
+main would become something like BackendImpl::run(World::new(..))
+and you want as much logic as possible to be in the world and the backend to just
+emit input events and accept render commands .
+need to do it bit by bit so it always compiles throughout the process or im gonna get bored of it when it sucks,
+but the end goal is being able to drop in a wasm/canvas backend as well.
+
+## Great Success (Dec 30)
+
+Pretty sure I decided all strings coerce to zero because `"1"` did but that's probably actually the string with the quotes.
+I can have optimisation that recognises the idiom of `(x == (0 + x)) === x.is_num()` and just call a runtime method.
+It's cool that I can emit code that shows intent more clearly (as long as there's no possible other interpretation for that expression).
+For now, it's a hack because I only recognise that specific shape of tree and miss-compile if I don't notice.
+TODO: test flag that enables and disables opts like that, so I can have little sanity checks that they behave the same.
+
+TODO: test flag that reverses iteration order.
+
+wrote little scratch programs that asserts sanity checks.
+very pleasing to be able to run it in a second and make sure i didn't make any dumb mistakes in simple expressions. 
+
+I don't quite feel prepared for doing it in the tres language yet but let's do a scratch one as a start.
+Mistakes I made: missing else branch on if, how do you have a unit statement?
+oh then & else were macros, and you need `do` to create a block with multiple things
+
+TODO: write a note in the readme about using turbo mode and run without screen refresh
+with all logic in a custom block for fair comparisons because i almost thought mine was way better
+than it actually is because i havent implemented yielding yet, so it cheats. 
+
 ## try running tres (Dec 29)
 
 Cheating and just printing name of costume if it's a char and ignoring pen stamp because that's how they print. 
@@ -30,21 +65,7 @@ runs the sin example but always returns 0 which makes sense if it's treating my 
 I'm very excited to port my postscript mandelbrot to this and see if mine is faster than turbowarp. 
 Tho seems there's no `roll` so maybe can use a vec instead of the stack, so you get less painful random access. 
 Learning loops: `0 1 2 3 4 5 6 :loop dup println 0 > ":loop" jump-if` prints those numbers. 
-But that doesn't work on the version on scratch website? confusing. 
-
-Pretty sure I decided all strings coerce to zero because `"1"` did but that's probably actually the string with the quotes. 
-I can have optimisation that recognises the idiom of `(x == (0 + x)) === x.is_num()` and just call a runtime method. 
-It's cool that I can emit code that shows intent more clearly (as long as there's no possible other interpretation for that expression). 
-For now, it's a hack because I only recognise that specific shape of tree and miss-compile if I don't notice. 
-TODO: test flag that enables and disables opts like that, so I can have little sanity checks that they behave the same. 
-
-TODO: test flag that reverses iteration order. 
-TODO: little scratch programs that assert sanity checks. 
-
-Mistakes I made:
-- missing else branch on if
-- unit statement
-- expression statement
+But that doesn't work on the version on scratch website? confusing.
 
 ## argument type inference (Dec 29)
 

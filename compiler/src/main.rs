@@ -10,8 +10,8 @@ fn main() {
     compile("target/tres", "target/scratch_out_tres");
     assert_eq!(linrays.matches("Poly").count(), 1, "You broke type inference.");
 
-    compile("target/sanity", "target/scratch_out_sanity");
-    // TODO: assert that passes
+    compile("target/sanity", "target/scratch_out_sanity");  // TODO: assert that passes
+    compile("target/mandelbrot", "target/scratch_out_mandelbrot");
 }
 
 fn compile(input: &str, output: &str) -> String{

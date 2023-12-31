@@ -1,0 +1,65 @@
+; Minimal non-interactive mandelbrot renderer. Just uses the pen to draw pixels. 
+; Port of the shader in https://github.com/LukeGrahamLandry/FractalViewer
+
+(macro max-steps 40)
+(macro scale 150)
+
+(sprite "main"
+  (variables steps) 
+  (lists fail-msgs lst)
+  (costumes "blank" "assets/blank.png")
+
+  (proc (when-flag-clicked)
+    (do-work)
+    )
+
+  ; seperate to enable Run without screen referesh 
+  (proc (do-work)
+    (variables half-width half-height x y)
+      (set-xy "-Infinity" "Infinity")
+      (:= half-width (- x-pos))
+      (:= half-height y-pos)
+      (for x (* 2 half-width)
+        (pen-up)
+        (set-xy (- x half-width) (- half-height))
+        (pen-down)
+        (for y (* 2 half-height)
+          (calc-steps (/ (- x half-width) scale) (/ (- y half-height) scale))
+          (if (= steps max-steps)
+            (set-pen-color 0xFF00)
+            (set-pen-color 0xFF))
+          (set-xy (- x half-width) (- y half-height))
+        )
+        )
+  )
+  
+  (proc (calc-steps xx yy) ; return steps;
+    (variables zSqX zSqY zX zY cX cY counter)
+    (:= steps 0)
+    (:= zX 0)
+    (:= zY 0)
+    (:= zSqX (* zX zX))
+    (:= zSqY (* zY zY))
+    (:= cX xx)
+    (:= cY yy)
+    (:= steps 0)
+    (for counter max-steps
+      (if (< (+ zSqX zSqY) 4)
+        (do (:= zY (* (* 2 zX) zY))
+        (:= zX (- zSqX zSqY))
+        (:= zX (+ zX cX))
+        (:= zY (+ zY cY))
+        (:= zSqX (* zX zX))
+        (:= zSqY (* zY zY))
+        (:= steps (+ steps 1)))
+
+        (:= steps steps)
+      )
+      
+    )
+
+    )
+)
+
+(sprite "Stage"
+  (costumes "backdrop" "assets/blank.png"))
