@@ -1,4 +1,6 @@
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
+use std::time::Instant;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -7,14 +9,20 @@ use winit::window::WindowBuilder;
 use crate::backend::RenderBackend;
 use crate::builtins::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH};
 use crate::sprite::Trigger;
-use crate::World;
+use crate::{ScratchProgram, World};
 
-pub struct SoftBackend();
+pub struct BackendImpl<S>(PhantomData<S>);
 
-impl RenderBackend for SoftBackend {
-    fn run<M: Copy, G>(mut world: World<M, G, Self>) {
-        let mut this = SoftBackend();
+impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
+    type Handle = Self;
+
+    fn run() {
+        let mut this = BackendImpl(PhantomData::default());
+        let mut world = World::<S, Self>::new();
+
+        let start = Instant::now();
         world.broadcast(&mut this, Trigger::FlagClicked);
+        println!("Handled Trigger::FlagClicked in {}ms.", (Instant::now() - start).as_millis());
 
         for sprite in &world.bases {
             println!("Drew {:?} lines.", sprite.lines.len());

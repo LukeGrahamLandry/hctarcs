@@ -1,14 +1,10 @@
 [workspace]
-members = [
+members = [  # TODO: maybe I dont want these in the same workspace cause it means all the rendering shit clutters the compiler's lock file which annoys me
     "compiler",
     "runtime",
 ]
 exclude = [
     "vendor/scratch-compiler",  # For tests
-    "target/scratch_out",  # Generated
-    "target/scratch_out_tres",  # Generated
-    "target/scratch_out_sanity",  # Generated
-    "target/scratch_out_mandelbrot" # Generated
 ]
 resolver = "2"
 

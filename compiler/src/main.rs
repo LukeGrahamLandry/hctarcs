@@ -6,12 +6,12 @@ use compiler::backend::rust::{CARGO_TOML, emit_rust};
 use compiler::scratch_schema::parse;
 
 fn main() {
-    let linrays = compile("target/linrays", "target/scratch_out");
-    compile("target/tres", "target/scratch_out_tres");
+    let linrays = compile("target/linrays", "out/gen/linrays");
+    compile("target/tres", "out/gen/tres");
     assert_eq!(linrays.matches("Poly").count(), 1, "You broke type inference.");
 
-    compile("target/sanity", "target/scratch_out_sanity");  // TODO: assert that passes
-    compile("target/mandelbrot", "target/scratch_out_mandelbrot");
+    compile("target/sanity", "out/gen/sanity");  // TODO: assert that passes
+    compile("target/mandelbrot", "out/gen/mandelbrot");
 }
 
 fn compile(input: &str, output: &str) -> String{
@@ -24,7 +24,8 @@ fn compile(input: &str, output: &str) -> String{
     let result = emit_rust(&project);
     create_dir_all(format!("{output}/src")).unwrap();
     fs::write(format!("{output}/src/main.rs"), &result).unwrap();
-    fs::write(format!("{output}/Cargo.toml"), CARGO_TOML).unwrap();
+    let cargotoml = CARGO_TOML.replace("scratch_out", &input.replace("/", "_"));
+    fs::write(format!("{output}/Cargo.toml"), cargotoml).unwrap();
 
     println!("[INFO] {} Polymorphic Type Annotations", result.matches(": Poly").count());
     println!("[INFO] {} Polymorphic Constructor Calls", result.matches("Poly::from").count());

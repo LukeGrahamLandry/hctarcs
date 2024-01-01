@@ -4,25 +4,23 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
 use std::io::{stdout, Write};
-use std::marker::PhantomData;
 use crate::backend::RenderBackend;
 use crate::poly::Str;
+use crate::ScratchProgram;
 use crate::sprite::{Line, Sprite, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
 pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
 
-// TODO: it seems ive gone overboard with the generics
-pub struct FrameCtx<'a, Msg: Copy, Globals, R: RenderBackend> {
+pub struct FrameCtx<'a, S: ScratchProgram<R>, R: RenderBackend<S>> {
     pub sprite: &'a mut SpriteBase,
     // pub vars: &'a mut S,
-    pub globals: &'a mut Globals,
-    pub render: &'a mut R,
-    pub _p: PhantomData<Msg>
+    pub globals: &'a mut S::Globals,
+    pub(crate) render: &'a mut R::Handle,
 }
 
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
-impl<'a, Msg: Copy, Globals, R: RenderBackend> FrameCtx<'a, Msg, Globals, R> {
+impl<'a, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, S, R> {
     pub fn pen_setPenColorToColor(&mut self, colour: f64) {
         self.sprite.pen.colour.0 = colour.max(0.0) as u32;
     }
@@ -140,7 +138,7 @@ impl<'a, Msg: Copy, Globals, R: RenderBackend> FrameCtx<'a, Msg, Globals, R> {
 }
 
 thread_local! {
-    pub static RNG: RefCell<StdRng> = RefCell::new(StdRng::from_rng(ThreadRng::default()).unwrap());
+    static RNG: RefCell<StdRng> = RefCell::new(StdRng::from_rng(ThreadRng::default()).unwrap());
 }
 
 pub fn dyn_rand(min: f64, max: f64) -> f64 {

@@ -37,10 +37,18 @@ pub fn emit_rust(project: &Project) -> String {
     format!(r#"
 {HEADER}
 fn main() {{
-    SoftBackend::run(World::new(Stage::default(), vec![{sprites}]))
+    RenderBackend::<Stage>::run()
+}}
+
+impl ScratchProgram<Backend> for Stage {{
+    type Msg = Msg;
+    type Globals = Stage;
+    fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
+        (Stage::default(), vec![{sprites}])
+    }}
 }}
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-enum Msg {{
+pub enum Msg {{
     InvalidComputedMessage,
     {msg_fields}
 }}
@@ -79,7 +87,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-runtime = { path = "../../runtime" }
+runtime = { path = "../../../runtime" }  # TODO: compiler arg for local path or get from github
 
 [profile.release]
 panic = "abort"
@@ -93,14 +101,13 @@ const HEADER: &str = r#"
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(unused)]
-use runtime::sprite::{SpriteBase, Sprite, Trigger};
-use runtime::{builtins, World};
-use runtime::poly::{Poly, Str, List};
-use runtime::backend::RenderBackend;
-use runtime::backend::softbuffer::*;
-use runtime::builtins::FrameCtx;
-type Backend = SoftBackend;
-type Ctx<'a> = FrameCtx<'a, Msg, Stage, Backend>;
+use runtime::*;
+use sprite::{SpriteBase, Sprite, Trigger};
+use poly::{Poly, Str, List};
+use backend::RenderBackend;
+use runtime::builtins::*;
+type Backend = runtime::backend::notan::BackendImpl<Stage>;
+type Ctx<'a> = FrameCtx<'a, Stage, Backend>;
 "#;
 
 
@@ -139,7 +146,7 @@ pub struct {0} {{
 impl {0} {{
 {procs}
 }}
-impl Sprite<Msg, Stage, Backend> for {0} {{
+impl Sprite<Stage, Backend> for {0} {{
     fn receive(&mut self, ctx: &mut Ctx, msg: Trigger<Msg>) {{
         match msg {{
             {handlers}
@@ -148,7 +155,7 @@ impl Sprite<Msg, Stage, Backend> for {0} {{
     }}
 
     // Grumble grumble object safety...
-    fn clone_boxed(&self) -> Box<dyn Sprite<Msg, Stage, Backend>> {{ Box::new(self.clone()) }}
+    fn clone_boxed(&self) -> Box<dyn Sprite<Stage, Backend>> {{ Box::new(self.clone()) }}
 }}"##, self.target.name)
     }
 
@@ -203,6 +210,7 @@ impl Sprite<Msg, Stage, Backend> for {0} {{
                 assert!(self.target.is_singleton);
                 format!("self.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
             }
+            Stmt::Exit => format!("println!(\"stop all\"); std::process::exit(0);\n"),
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         }
     }
@@ -287,7 +295,7 @@ impl Sprite<Msg, Stage, Backend> for {0} {{
                 }
                 if *op == BinOp::Random {
                     // TODO: optimise if both are constant ints
-                    return self.coerce(&SType::Number, format!("builtins::dyn_rand({}, {})", a, b), &t)
+                    return self.coerce(&SType::Number, format!("dyn_rand({}, {})", a, b), &t)
                 }
                 if *op == BinOp::Pow {
                     return self.coerce(&SType::Number, format!("{}.powf({})", a, b), &t)

@@ -10,17 +10,24 @@ pub mod callback;
 pub mod poly;
 pub mod backend;
 
-/// Types for Msg and Globals are generated for a specific scratch program by the compiler.
-/// This crate needs to be generic over the user program but there will only ever be one instantiation of this generic in a given application.
-pub struct World<Msg: Copy, Globals, R: RenderBackend> {
-    pub bases: VecDeque<SpriteBase>,
-    pub custom: VecDeque<Box<dyn Sprite<Msg, Globals, R>>>,
-    pub globals: Globals,
-    pub messages: VecDeque<Msg>
+pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
+    type Msg: Copy;
+    type Globals;
+    fn create_initial_state() -> (Self::Globals, Vec<Box<dyn Sprite<Self, R>>>);
 }
 
-impl<Msg: Copy, Globals, R: RenderBackend> World<Msg, Globals, R> {
-    pub fn new(globals: Globals, custom: Vec<Box<dyn Sprite<Msg, Globals, R>>>) -> Self {
+/// Types for Msg and Globals are generated for a specific scratch program by the compiler.
+/// This crate needs to be generic over the user program but there will only ever be one instantiation of this generic in a given application.
+pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
+    bases: VecDeque<SpriteBase>,
+    custom: VecDeque<Box<dyn Sprite<S, R>>>,
+    globals: S::Globals,
+    messages: VecDeque<S::Msg>
+}
+
+impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
+    pub fn new() -> Self {
+        let (globals, custom) = S::create_initial_state();
         credits();
         World {
             bases: vec![SpriteBase::default(); custom.len()].into(),
@@ -32,14 +39,13 @@ impl<Msg: Copy, Globals, R: RenderBackend> World<Msg, Globals, R> {
 
     // TODO: the compiler knows which messages each type wants to listen to.
     //       it could generate a separate array for each and have no virtual calls or traversing everyone on each message
-    pub fn broadcast(&mut self, render: &mut R, msg: Trigger<Msg>) {
+    pub fn broadcast(&mut self, render: &mut R::Handle, msg: Trigger<S::Msg>) {
         let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
         for (sprite, c) in sprites {
             let mut ctx = FrameCtx {
                 sprite,
                 globals: &mut self.globals,
                 render,
-                _p: Default::default(),
             };
             c.receive(&mut ctx, msg.clone());
         }

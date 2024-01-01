@@ -1,7 +1,22 @@
 
-## refactoring rendering (Dec 31)
+## notan backend (Dec 31)
 
-Plan: 
+- https://github.com/Nazariglez/notan
+- https://nazariglez.github.io/notan-web/
+
+Randomly chosen library that claims to make it easier than directly interacting with the cpu crates. 
+Should eventually do my own wgpu backend but don't care right now. 
+I had an unpleasant previous experience with nannou making every rectangle draw in their pretty 
+builder api take like several hashmap lookups that were notably slow, so I'm a little suspicious 
+of friendly stuff but let's see.
+It's pretty chonky to build so my not sharing workspace for generated projects is annoying. 
+
+god-damn its annoying that I cant just pass the world into the init function because they want to 
+make stupid pretty builder for the easy case now you cant do anything. 
+
+## planned refactoring (Dec 31)
+
+(1) TODO:
 I think I should separate the simulation world that owns the sprites and globals from the
 driver that runs the event loop. Maybe all the sprite methods become fn (ctx: Ctx<Self>, ...args)
 where Ctx { &mut vars, &mut sprite, &mut globals, &mut BackendFrameCtx }
@@ -17,6 +32,35 @@ TODO:
 I should also think about splitting up the compiler backend more because currently the rust thing 
 is doing a lot of type coercing work that would need to be replicated if I wanted to add a c one for example. 
 Maybe a new pass that adds explicit cast expressions and later that can also split functions across await points. 
+
+TODO: 
+Need to have a nice CLI for the compiler and try to make a sane makefile for all my tests. 
+Currently have to change so many places to add one. Can just use clap or whatever but should also have 
+a serde for that struct so can get it from a string in the web one or have a cargo.toml equivalent 
+for a real project instead of being forced to do your build config in cli arguments. tho why not allow that 
+too for projects like this that have lots of targets. Want to make switching backends as easy as possible 
+for users: would be cool if you don't need to rerun my compiler, and it was just a feature flag on the 
+generated project since they all expose the same interface to the scratch code. 
+Would be nice to auto-run the tests that just generate one frame and put them all in an image, so 
+I can see all results at once. Is it ugly to commit that, so you can see the diff?
+
+TODO:
+Also want to add a lib target to scratch-compiler, so I can include examples in my web demo without 
+needing to ship giant json blobs. Need to add a feature flag to turn off cranelift backend cause while 
+it's very cool, I don't need it in that context. Might be a pain to rework file system dependency.
+
+(1) DONE: the refactor to make runtime backend a trait.
+Couldn't put the user sprite in the Ctx struct because then it would have to be generic over it but 
+the world only has dyn trait objects so instead user code is still methods and ctx just has everything else. 
+But the main point was to be a place to hook in the render backend, so it's fine. 
+
+TODO: 
+Maybe the thing contained in the Ctx shouldn't be the backend struct itself but some sort of handle 
+to the current frame? Is that what associated types on traits are or are they like iterators where 
+you have to specify? Oh, it's both. Like Iterator could be any but Zip doesn't make you re-state the 
+associated types of A and B. So that should work and the backend could choose itself as the type if that makes sense. 
+Had to think about it but difference of associated vs generics is that there can only be one so caller doesn't specify.
+- https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#specifying-placeholder-types-in-trait-definitions-with-associated-types
 
 ## Great Success (Dec 30)
 
@@ -116,6 +160,8 @@ and passed to functions without being directly used in an expression so those st
 could be processed before it knows types for the function parameters, and then it guesses 
 they must be polymorphic. Instead of guessing, I should walk the tree and see if there's any usages that have type checked by now.
 Did that, feels like a lot of cloning that would be slow, but also it makes no difference cause profiler says 75% of the time is serde parsing the json anyway (or 86% in debug mode).
+
+NOTE: profiler seems to hang if you start try to spawn a new process (like when my code wants to run cargo check) ???
 
 Can also assert cargo check passes as part of the tests. 
 And if I can think of any dumb syntactic things to check for like `NumOrStr::from(NumOrStr::from(...expr))`.

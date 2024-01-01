@@ -1,6 +1,3 @@
-
-
-
 WASM_PATH := target/wasm32-unknown-unknown/release
 WEB_DIST_PATH := ../LukeGrahamLandry.github.io/hctarcs
 
@@ -20,10 +17,10 @@ target/mandelbrot/project.json: tests/mandelbrot.scratch
 
 test: target/sanity/project.json
 	cargo run --bin compiler
-	cd target/scratch_out_sanity && cargo run
+	cd out/gen/sanity && cargo run
 
 mandelbrot: target/mandelbrot/project.json
 	cargo run --bin compiler
-	cd target/scratch_out_mandelbrot && cargo run
+	cd out/gen/mandelbrot && cargo run --release
 
 .PHONY: release_web test

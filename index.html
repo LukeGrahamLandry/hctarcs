@@ -57,7 +57,7 @@
                 rs  = Compiler.compile_sb3(src.ptr, src.len);
                 Compiler.drop_c_str(src.ptr);
             } catch (e) {
-                report(false, e.stack);
+                report(false, "The compiler choked on your input. \nHctarcs is heavily WIP and doesn't understand your program yet, sorry!\n" + e.stack);
                 Compiler.drop_c_str(src.ptr);
                 return;
             }

@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use crate::backend::RenderBackend;
 use crate::builtins::FrameCtx;
+use crate::ScratchProgram;
 
 #[derive(Clone, Default, Debug)]
 pub struct SpriteBase {
@@ -42,10 +43,10 @@ pub enum Trigger<Msg> {
     Message(Msg),
 }
 
-pub trait Sprite<Msg: Copy, Globals, R: RenderBackend>: Debug {
-    fn receive(&mut self, ctx: &mut FrameCtx<Msg, Globals, R>, msg: Trigger<Msg>);
+pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug {
+    fn receive(&mut self, ctx: &mut FrameCtx<S, R>, msg: Trigger<S::Msg>);
 
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.
     // You can't just impl here and have where Self: Clone cause you can't call it on the trait object.
-    fn clone_boxed(&self) -> Box<dyn Sprite<Msg, Globals, R>>;
+    fn clone_boxed(&self) -> Box<dyn Sprite<S, R>>;
 }
