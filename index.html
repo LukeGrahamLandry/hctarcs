@@ -10,11 +10,13 @@
 </head>
 <body style="background-color: gray;">
 <h3> hctarcs: Compile Scratch Projects to Native Rust Programs! </h3>
+<!-- TODO: examples should link to ?project=ID on this site -->
 <b style="color: darkred"> Very WIP. Most features are not supported. Working example project: <a href="https://scratch.mit.edu/projects/726052645">Johan-Mi/linrays</a></b>
 <noscript> Your browser No JavaScript </noscript>
 <div id="ui" hidden>
     <b> Paste Scratch project.json here:</b> <br>
     <textarea id="projectjson" rows="5" style="width:100%"></textarea><br>
+    <b id="which"></b> <br>
     <b id="msgbox"></b> <br>
     <div id="resultbox" hidden>
         <b> Result src/main.rs:</b> <br>
@@ -32,44 +34,67 @@
     </div>
     <div style="text-align: center"><a href="https://github.com/LukeGrahamLandry/hctarcs">Github</a></div>
 </div>
-<script>
+<script type="module">
     let Compiler = null;
     const projectjson = document.getElementById("projectjson");
     const mainrs = document.getElementById("mainrs");
     const cargotoml = document.getElementById("cargotoml");
     const msgbox = document.getElementById("msgbox");
     const resultbox = document.getElementById("resultbox");
+    const which = document.getElementById("which");
+
+    const params = new URLSearchParams(window.location.search);
+    let id = params.get("project");
+    let info = null;
+    if (id != null) {
+        // TODO: cache result in local storage
+        try {
+            info = await fetch_scratch(id);
+        } catch (e) {
+            report(false, `Invalid project id: ${id}\n${e}`);
+        }
+    }
+
     function handleWasmLoaded(wasm) {
         console.log("Wasm Loaded")
         Compiler = wasm.instance.exports;
         document.getElementById("ui").hidden = false;
         projectjson.addEventListener("input", () => {
-            const startTime = performance.now();
-            try {
-                JSON.parse(projectjson.value)
-            } catch (e) {
-                report(false, e);
-                return;
-            }
-            let src = putWasmString(projectjson.value);
-            let rs;
-            try {
-                rs  = Compiler.compile_sb3(src.ptr, src.len);
-                Compiler.drop_c_str(src.ptr);
-            } catch (e) {
-                report(false, "The compiler choked on your input. \nHctarcs is heavily WIP and doesn't understand your program yet, sorry!\n" + e.stack);
-                Compiler.drop_c_str(src.ptr);
-                return;
-            }
-            mainrs.value = getWasmString(rs, Compiler.c_str_len(rs));
-            Compiler.drop_c_str(rs);
-            let ct = Compiler.get_cargo_toml();
-            cargotoml.value = getWasmString(ct, Compiler.c_str_len(ct));
-            Compiler.drop_c_str(ct);
-            resultbox.hidden = false;
-            report(true, "Compiled " + (projectjson.value.length) + " bytes of Scratch to " + (mainrs.value.length) + " bytes of Rust in " + (Math.round(performance.now() - startTime)) + "ms.");
-            projectjson.value = "";
+            which.innerText = "Pasted json text.";
+            compile_json(projectjson.value);
         });
+        if (info != null) {
+            which.innerHTML = `Found project ${info.id}: ${info.title} by ${info.author}<br> <a href="https://scratch.mit.edu/projects/${info.id}"> View on Scratch</a> OR <a href="https://turbowarp.org/${info.id}"> View on Turbowarp</a>`;
+            compile_json(JSON.stringify(info.project_json));  // redundant rechecking that it parses, but it does have to be a string to pass to wasm
+        }
+    }
+
+    function compile_json(raw_json) {
+        const startTime = performance.now();
+        try {
+            JSON.parse(raw_json)
+        } catch (e) {
+            report(false, e);
+            return;
+        }
+        let src = putWasmString(raw_json);
+        let rs;
+        try {
+            rs  = Compiler.compile_sb3(src.ptr, src.len);
+            Compiler.drop_c_str(src.ptr);
+        } catch (e) {
+            report(false, "The compiler choked on your input. \nHctarcs is heavily WIP and doesn't understand your program yet, sorry!\n" + e.stack);
+            Compiler.drop_c_str(src.ptr);
+            return;
+        }
+        mainrs.value = getWasmString(rs, Compiler.c_str_len(rs));
+        Compiler.drop_c_str(rs);
+        let ct = Compiler.get_cargo_toml();
+        cargotoml.value = getWasmString(ct, Compiler.c_str_len(ct));
+        Compiler.drop_c_str(ct);
+        resultbox.hidden = false;
+        report(true, "Compiled " + (raw_json.length) + " bytes of Scratch to " + (mainrs.value.length) + " bytes of Rust in " + (Math.round(performance.now() - startTime)) + "ms.");
+        projectjson.value = "";
     }
 
     const callbacks = { env: {} }
@@ -84,6 +109,17 @@
         msgbox.innerText = (success ? "" : "Compilation Failed:\n") + msg;
         resultbox.hidden = !success;
         console.log(msg);
+    }
+
+    async function fetch_scratch(id) {
+        let info = (await (await fetch(`https://trampoline.turbowarp.org/api/projects/${id}`)).json());
+        console.log(info);
+        return {
+            id: info.id,
+            author: info.author.username,
+            title: info.title,
+            project_json: await (await fetch(`https://projects.scratch.mit.edu/${id}?token=${info.project_token}`)).json(),
+        };
     }
 
     const de = new TextDecoder();

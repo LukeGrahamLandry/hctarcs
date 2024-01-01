@@ -1,4 +1,22 @@
 
+## nicer interface (Dec 31)
+
+Want to add the ability to just load a project from scratch by url to my demo site. 
+
+the scratch api for getting the project token doesn't let you do cors stuff but the turbowarp one does.
+very friendly of them to not make everyone else set up their own lambda function or whatever to circumvent. 
+and the scratch endpoint for actually getting the project.json doesn't have the cors thing tho which is odd (that's what turbowarp uses).
+
+```js
+let scratch = async (id) => {
+  let token = (await (await fetch(`https://trampoline.turbowarp.org/api/projects/${id}`)).json()).project_token;
+  return (await fetch(`https://projects.scratch.mit.edu/${id}?token=${token}`)).json();
+}
+console.log(await scratch("396320314"));
+```
+
+anyway that works in the console from my site. 
+
 ## notan backend (Dec 31)
 
 - https://github.com/Nazariglez/notan

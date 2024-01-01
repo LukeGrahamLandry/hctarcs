@@ -68,6 +68,7 @@
     ; (eq "" (!! lst 5) "list oob")
 
     ; TODO: mod edge cases
+    (eq (mod 5 3) 2 "basic mod")
     ; TODO: float edge cases
 
     )

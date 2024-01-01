@@ -6,7 +6,6 @@
 
 (sprite "main"
   (variables steps) 
-  (lists fail-msgs lst)
   (costumes "blank" "assets/blank.png")
 
   (proc (when-flag-clicked)
