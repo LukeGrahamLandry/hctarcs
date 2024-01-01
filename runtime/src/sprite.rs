@@ -11,8 +11,6 @@ pub struct SpriteBase {
     pub direction: f64,
     pub speed: f64,
     pub pen: Pen,
-    // TODO: be careful implementing cloning because don't want to double draw pending lines
-    pub lines: Vec<Line>,  // TODO: run length encoding?
     // TODO: is this shared across sprites?
     // TODO: Will be async
     pub last_answer: String,
@@ -29,7 +27,7 @@ pub struct Line {
 #[derive(Clone, Default, Debug)]
 pub struct Pen {
     pub size: f64,
-    pub down: bool,
+    pub active: bool,
     pub colour: Argb
 }
 

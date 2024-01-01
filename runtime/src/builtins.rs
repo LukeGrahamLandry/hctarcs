@@ -6,21 +6,21 @@ use std::cell::RefCell;
 use std::io::{stdout, Write};
 use crate::backend::RenderBackend;
 use crate::poly::Str;
-use crate::ScratchProgram;
+use crate::{RenderHandle, ScratchProgram};
 use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
 pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
 
-pub struct FrameCtx<'a, S: ScratchProgram<R>, R: RenderBackend<S>> {
+pub struct FrameCtx<'a, 'frame: 'a, S: ScratchProgram<R>, R: RenderBackend<S>> {
     pub sprite: &'a mut SpriteBase,
     // pub vars: &'a mut S,
     pub globals: &'a mut S::Globals,
-    pub(crate) _render: &'a mut R::Handle,
+    pub(crate) render: &'a mut R::Handle<'frame, 'frame>,
 }
 
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
-impl<'a, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, S, R> {
+impl<'a, 'frame, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, 'frame, S, R> {
     pub fn pen_setPenColorToColor(&mut self, colour: f64) {
         self.sprite.pen.colour.0 = colour.max(0.0) as u32;
     }
@@ -30,11 +30,11 @@ impl<'a, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, S, R> {
     }
 
     pub fn pen_penUp(&mut self) {
-        self.sprite.pen.down = false;
+        self.sprite.pen.active = false;
     }
 
     pub fn pen_penDown(&mut self) {
-        self.sprite.pen.down = true;
+        self.sprite.pen.active = true;
     }
 
     pub fn motion_changexby(&mut self, dx: f64) {
@@ -125,13 +125,19 @@ impl<'a, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, S, R> {
     }
 
     fn draw(&mut self, old: (f64, f64)) {
-        if self.sprite.pen.down {
-            self.sprite.lines.push(Line {
-                start: old,
-                end: self.pos(),
-                size: self.sprite.pen.size,
-                colour: self.sprite.pen.colour,
-            })
+        if self.sprite.pen.active {
+            let end = self.pos();
+            let is_pixel = self.sprite.pen.size <= 1.0 && 1.0 == ((old.0 - end.0).powi(2) + (old.1 - end.1).powi(2)) ;
+            if is_pixel {
+                self.render.pen_pixel(end, self.sprite.pen.colour);
+            } else {
+                self.render.pen_line(Line {
+                    start: old,
+                    end,
+                    size: self.sprite.pen.size,
+                    colour: self.sprite.pen.colour,
+                })
+            }
         }
     }
 }

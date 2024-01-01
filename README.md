@@ -9,7 +9,6 @@
 BEWARE: There's no sandbox-ing. Only run projects on your computer if you understand what they're doing. 
 *If you can think of a way to get arbitrary code execution with this, please let me know!*
 
-
 ## (Almost) Working Projects
 
 - single scene ray tracer: [Johan-Mi/linrays](https://github.com/Johan-Mi/linrays), [scratch](https://scratch.mit.edu/projects/726052645) 
@@ -45,6 +44,7 @@ That means you can use normal rust debugging/profiling software on it.
 
 ## How It Works: Compiler
 
+The compiler (separate form the programs it generates) supports targeting wasm and provides a c api that doesn't need wasm-bindgen.
 Wasm Build: `cargo build --release --target wasm32-unknown-unknown --bin compiler`
 
 ## How It Works: Runtime

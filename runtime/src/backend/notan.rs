@@ -16,8 +16,13 @@ pub struct State {
     bytes: Vec<u8>,
 }
 
+pub struct Handle<'frame> {
+    state: &'frame mut State,
+    gfx: &'frame mut Graphics
+}
+
 impl<S: ScratchProgram<Self>> RenderBackend<S> for BackendImpl<S> {
-    type Handle = State;
+    type Handle<'a, 'b: 'a> = Handle<'a>;
 
     fn run() {
         notan::init_with(BackendImpl::<S>::init)
@@ -49,29 +54,22 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             world: World::new(),
         };
 
+        let mut handle = Handle {
+            state: &mut s.state,
+            gfx,
+        };
+
         // let start = Instant::now();
-        s.world.broadcast(&mut s.state, Trigger::FlagClicked);
+        s.world.broadcast(&mut handle, Trigger::FlagClicked);
         // println!("Handled Trigger::FlagClicked in {}ms.", (Instant::now() - start).as_millis());
         s
     }
 
     fn draw(gfx: &mut Graphics, state: &mut Self) {
-        let lines = state.world.bases.iter_mut().map(|sprite| sprite.lines.drain(0..)).flatten();
-
-        for line in lines {
-            // let len_sq = (line.start.0-line.end.0).powi(2) + (line.start.1-line.end.1).powi(2);
-            // if len_sq <= 1.0 {
-
-            let x = (line.start.0 + HALF_SCREEN_WIDTH) as usize;
-            let y = (HALF_SCREEN_HEIGHT - line.start.1) as usize;
-            let i = x + (y * (HALF_SCREEN_WIDTH as u32 * 2) as usize);
-            // println!("{line:?}");
-            if i > 0 && i < (state.state.bytes.len() / 4) {
-                let i = i * 4;
-                // Aaaa i cant think about colour spaces.
-                state.state.bytes[i..i + 4].copy_from_slice(&Color::from(line.colour).rgba_u8());
-            }
-        }
+        let _handle = Handle {
+            state: &mut state.state,
+            gfx,
+        };
 
         // Update the texture with the new data
         gfx.update_texture(&mut state.state.texture)
@@ -94,11 +92,23 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
     }
 }
 
+impl<'a> RenderHandle for Handle<'a> {
+    fn pen_pixel(&mut self, (x, y): (f64, f64), colour: Argb) {
+        // TODO: underflow check
+        let x = (x + HALF_SCREEN_WIDTH) as usize;
+        let y = (HALF_SCREEN_HEIGHT - y) as usize;
+        let i = (x + (y * (HALF_SCREEN_WIDTH as u32 * 2) as usize)) * 4;
+        if i < self.state.bytes.len() {
+            self.state.bytes[i..i + 4].copy_from_slice(&Color::from(colour).rgba_u8());
+        }
+    }
 
-impl RenderHandle for State {
-
+    fn pen_line(&mut self, line: crate::Line) {
+        todo!()
+    }
 }
 
+// Aaaa i cant think about colour spaces.
 impl From<Argb> for Color {
     fn from(value: Argb) -> Self {
         Color::from_bytes(

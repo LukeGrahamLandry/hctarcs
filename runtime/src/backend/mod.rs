@@ -1,6 +1,6 @@
 //! By default no backends are enabled.
 //! The generated scratch project must use a cargo feature flag to enable one.
-use crate::ScratchProgram;
+use crate::{Argb, Line, ScratchProgram};
 
 #[cfg(feature = "render-softbuffer")]
 pub mod softbuffer;
@@ -8,15 +8,14 @@ pub mod softbuffer;
 pub mod notan;
 
 pub trait RenderBackend<S: ScratchProgram<Self>>: Sized {
-    type Handle: RenderHandle;
+    type Handle<'a, 'b: 'a>: RenderHandle;
 
     /// This function does not return until the program is over.
     fn run();
 }
 
-// TODO: UNUSED thus far
-// the idea is this will be something that can be passed into builtin ctx methods to request rendering work.
 // this might be the same struct as the RenderBackend but it might not want to give a unique reference to everything.
 pub trait RenderHandle {
-
+    fn pen_pixel(&mut self, pos: (f64, f64), colour: Argb);
+    fn pen_line(&mut self, line: Line);
 }

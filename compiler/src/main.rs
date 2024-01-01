@@ -11,7 +11,7 @@ fn main() {
 mod cli {
     use std::fs;
     use std::fs::create_dir_all;
-    use std::io::{Cursor, Read, read_to_string};
+    use std::io::{Cursor, read_to_string};
     use std::path::PathBuf;
     use std::process::Command;
     use clap::{Parser, ValueEnum};
@@ -23,6 +23,7 @@ mod cli {
 
     pub(crate) fn run() -> anyhow::Result<()> {
         let opts = Cli::parse();
+        assert_eq!(opts.assets, AssetPackaging::Embed);
 
         let (raw, name) = if opts.input.starts_with("http") {
             assert!(opts.input.contains("scratch.mit.edu/projects") || opts.input.contains("turbowarp.org"));
@@ -53,7 +54,7 @@ mod cli {
 
         let project = parse(raw.as_str())?;
         let project: Project = project.into();
-        let result = emit_rust(&project);
+        let result = emit_rust(&project, opts.render.code_name());
 
         let mut path = opts.outdir.clone();
         path.push("src");
@@ -102,7 +103,8 @@ mod cli {
     #[derive(Parser, Debug)]
     #[command(author, version, about, long_about = None)]
     struct Cli {
-        /// Path to a .sb3 file or project.json
+        // TODO:  or project.json local. or number id of scratch project
+        /// Local path to a .sb3 file OR url to scratch/turbowarp project.
         #[arg(short, long)]
         input: String,
 
@@ -137,14 +139,22 @@ mod cli {
         #[arg(long)]
         deny_poly: bool,
 
-        /// What to use as the User-Agent http header when calling the scratch api.
+        /// What to use as the User-Agent http header when the compiler calls the scratch api.
         #[arg(long, default_value = "github/LukeGrahamLandry/hctarcs")]
-        user_agent: String
+        user_agent: String,
+
+        #[arg(long, default_value="embed")]
+        assets: AssetPackaging,
     }
 
-    #[derive(Default, Copy, Clone, Debug, ValueEnum)]
-    pub enum Target {
-        #[default]
+    #[derive(Copy, Clone, Debug, ValueEnum, Eq, PartialEq)]
+    enum AssetPackaging {
+        Embed,
+        Fetch,
+    }
+
+    #[derive(Copy, Clone, Debug, ValueEnum, Eq, PartialEq)]
+    enum Target {
         Notan,
         Softbuffer,
     }

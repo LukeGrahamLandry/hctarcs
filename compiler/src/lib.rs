@@ -16,7 +16,7 @@ pub mod wasm_interface {
     pub unsafe extern "C" fn compile_sb3(project_json: *const u8, len: usize) -> *const c_char {
         let s = &*slice_from_raw_parts(project_json, len);
         let project: Project = parse(std::str::from_utf8(s).unwrap()).unwrap().into();
-        let src = emit_rust(&project);
+        let src = emit_rust(&project, "notan");
         CString::new(src).unwrap().into_raw()
     }
 

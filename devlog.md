@@ -1,4 +1,14 @@
 
+## including assets (Jan 1)
+
+As practice, make line drawing go through render handle so don't need to save them all in a list. 
+TODO: make sure the pixel set check actually makes it faster. 
+wasted so much type trying to get lifetimes to work out on the softbuffer backend that i don't even care about. 
+
+Want the option to include in the binary or download at runtime (need some sort of caching I guess).
+
+TODO: unrelated, I wonder if scratch-compiler-2 return values support recursive fibonacci
+
 ## nicer interface (Dec 31)
 
 Want to add the ability to just load a project from scratch by url to my demo site. 
@@ -15,7 +25,7 @@ let scratch = async (id) => {
 console.log(await scratch("396320314"));
 ```
 
-anyway that works in the console from my site. 
+anyway that works in the console from my site.
 
 ## notan backend (Dec 31)
 
@@ -35,6 +45,8 @@ make stupid pretty builder for the easy case now you cant do anything.
 Current runtime sizes on trivial mandelbrot so all size is renderer with (release, panic=abort, strip=debuginfo, lto=true):   
 native: (softbuffer=672 KB, notan=1829 KB) wasm: (notan= 985 KB + 55 KB js)
 pleasing that trunk serve just works. 
+
+TODO: notan has nice egui stuff. should make a variable view window. 
 
 ## planned refactoring (Dec 31)
 

@@ -3,12 +3,12 @@
 <head>
     <title>hctarcs</title>
     <style>
-        a {
-            color: rgb(0, 204, 255);
-        }
+        a { color: rgb(0, 204, 255); }
+        ul { margin-top: 0 }
+        body { background-color: grey; }
     </style>
 </head>
-<body style="background-color: gray;">
+<body>
 <h3> hctarcs: Compile Scratch Projects to Native Rust Programs! </h3>
 <!-- TODO: examples should link to ?project=ID on this site -->
 <b style="color: darkred"> Very WIP. Most features are not supported. Working example project: <a href="https://scratch.mit.edu/projects/726052645">Johan-Mi/linrays</a></b>
@@ -36,6 +36,7 @@
 </div>
 <script type="module">
     let Compiler = null;
+    const params = new URLSearchParams(window.location.search);
     const projectjson = document.getElementById("projectjson");
     const mainrs = document.getElementById("mainrs");
     const cargotoml = document.getElementById("cargotoml");
@@ -43,19 +44,7 @@
     const resultbox = document.getElementById("resultbox");
     const which = document.getElementById("which");
 
-    const params = new URLSearchParams(window.location.search);
-    let id = params.get("project");
-    let info = null;
-    if (id != null) {
-        // TODO: cache result in local storage
-        try {
-            info = await fetch_scratch(id);
-        } catch (e) {
-            report(false, `Invalid project id: ${id}\n${e}`);
-        }
-    }
-
-    function handleWasmLoaded(wasm) {
+    async function handleWasmLoaded(wasm) {
         console.log("Wasm Loaded")
         Compiler = wasm.instance.exports;
         document.getElementById("ui").hidden = false;
@@ -63,15 +52,14 @@
             which.innerText = "Pasted json text.";
             compile_json(projectjson.value);
         });
-        if (info != null) {
-            which.innerHTML = `Found project ${info.id}: ${info.title} by ${info.author}<br> <a href="https://scratch.mit.edu/projects/${info.id}"> View on Scratch</a> OR <a href="https://turbowarp.org/${info.id}"> View on Turbowarp</a>`;
-            compile_json(JSON.stringify(info.project_json));  // redundant rechecking that it parses, but it does have to be a string to pass to wasm
-        }
+        let id = params.get("project");
+        if (id != null) compile_scratch(id);
     }
 
+    // TODO: less garbage error messages. i think rust errors dont get their message
     function compile_json(raw_json) {
         const startTime = performance.now();
-        try {
+        try {  // Make sure it's actually json before bothering sending to wasm cause the error message is nicer.
             JSON.parse(raw_json)
         } catch (e) {
             report(false, e);
@@ -83,7 +71,7 @@
             rs  = Compiler.compile_sb3(src.ptr, src.len);
             Compiler.drop_c_str(src.ptr);
         } catch (e) {
-            report(false, "The compiler choked on your input. \nHctarcs is heavily WIP and doesn't understand your program yet, sorry!\n" + e.stack);
+            report(false, "Hctarcs is heavily WIP and doesn't understand your program yet, sorry!\n\n" + e.stack);
             Compiler.drop_c_str(src.ptr);
             return;
         }
@@ -111,14 +99,29 @@
         console.log(msg);
     }
 
-    async function fetch_scratch(id) {
-        let info = (await (await fetch(`https://trampoline.turbowarp.org/api/projects/${id}`)).json());
-        console.log(info);
+    // TODO: text box to paste scratch url/id so you dont have to know magic query string
+    async function compile_scratch(id) {
+        try {
+            let info = await try_fetch_scratch(id);
+            which.innerHTML = `Found project ${info.id}: ${info.title} by ${info.author}<br> <a href="https://scratch.mit.edu/projects/${info.id}"> View on Scratch</a> OR <a href="https://turbowarp.org/${info.id}"> View on Turbowarp</a>`;
+            compile_json(info.project_json_str);
+        } catch (e) {
+            report(false, `Invalid project id: ${id}\n${e}`);
+        }
+    }
+
+    // TODO: cache result in local storage? should display the list & clear btn tho and not just silently suck however many KB every project you try.
+    async function try_fetch_scratch(id) {
+        if (isNaN(parseInt(id))) throw "Project id must be a number";
+        const req = await fetch(`https://trampoline.turbowarp.org/api/projects/${id}`);
+        if (req.status >= 400) throw await req.text();
+        const info = await req.json();
         return {
             id: info.id,
-            author: info.author.username,
             title: info.title,
-            project_json: await (await fetch(`https://projects.scratch.mit.edu/${id}?token=${info.project_token}`)).json(),
+            author: info.author.username,
+            // Not using .json() here because it needs to be a string to pass to wasm anyway.
+            project_json_str: await (await fetch(`https://projects.scratch.mit.edu/${id}?token=${info.project_token}`)).text(),
         };
     }
 
@@ -137,5 +140,14 @@
         return { ptr: ptr, len: buf.length };
     }
 </script>
+
+<div>
+    <b> Credits </b>
+    <ul>
+        <li> <a href="https://scratch.mit.edu">Scratch</a> is a project of the Scratch Foundation, in collaboration with the Lifelong Kindergarten Group at the MIT Media Lab. It is available for free. </li>
+        <li> <a href="https://github.com/Johan-Mi/scratch-compiler">Johan-Mi/scratch-compiler</a> provides s-expression syntax for creating Scratch projects. Used for testing my compiler without using the clunky gui. </li>
+        <li> <a href="https://github.com/TurboWarp/trampoline">TurboWarp/trampoline</a> hosts a proxy with the right CORS settings for using the scratch metadata api from the browser. </li>
+    </ul>
+</div>
 </body>
 </html>

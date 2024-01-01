@@ -23,7 +23,13 @@ test: target/sanity.sb3 target/mandelbrot.sb3
 # TODO: figure out how to turn off notan's logging so I can run in debug mode.
 
 mandelbrot: target/mandelbrot/project.json
-	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --check --deny-poly --run
+	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --deny-poly --run
+
+tres:
+	cargo run --bin compiler -- -i target/tres.sb3 -o out/gen/tres --run
+
+linrays:
+	cargo run --bin compiler -- -i target/linrays.sb3 -o out/gen/linrays --run
 
 # Note: scratch-compiler needs you in the right current directory to find asset files (and scratch needs you to have a texture even if you're just using the pen).
 target/sanity.sb3: tests/sanity.scratch
@@ -34,4 +40,4 @@ target/mandelbrot.sb3: tests/mandelbrot.scratch
 	cd tests && ../vendor/scratch-compiler/target/release/scratch-compiler mandelbrot.scratch
 	mv "./tests/project.sb3" "target/mandelbrot.sb3"
 
-.PHONY: release_web test web mandelbrot
+.PHONY: release_web test web mandelbrot tres linrays

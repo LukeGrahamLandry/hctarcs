@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 
-pub fn emit_rust(project: &Project) -> String {
+pub fn emit_rust(project: &Project, backend_str: &str) -> String {
     let msgs: HashSet<Trigger> = project.targets.
         iter()
         .map(|target|
@@ -33,7 +33,6 @@ pub fn emit_rust(project: &Project) -> String {
         };
         format!("\"{}\"=>Msg::{}, \n", project.var_names[name.0].escape_default(), trigger_msg_ident(project, *name))
     }).collect();
-    let backend_str = "notan"; // softbuffer
 
     format!(r#"
 {HEADER}
@@ -91,9 +90,9 @@ const HEADER: &str = r#"
 use runtime::*;
 use sprite::*;
 use poly::*;
-use backend::RenderBackend;
+use backend::{RenderBackend, RenderHandle};
 use runtime::builtins::*;
-type Ctx<'a> = FrameCtx<'a, Stage, Backend>;
+type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
 "#;
 
 // TODO: enum
