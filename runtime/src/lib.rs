@@ -1,14 +1,16 @@
 use std::collections::VecDeque;
 use std::env;
-use crate::backend::RenderBackend;
-use crate::builtins::FrameCtx;
-use crate::sprite::{Sprite, SpriteBase, Trigger};
 
 pub mod sprite;
 pub mod builtins;
 pub mod callback;
 pub mod poly;
 pub mod backend;
+
+pub use sprite::*;
+pub use builtins::*;
+pub use poly::*;
+pub use backend::*;
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Copy;
@@ -22,7 +24,7 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     bases: VecDeque<SpriteBase>,
     custom: VecDeque<Box<dyn Sprite<S, R>>>,
     globals: S::Globals,
-    messages: VecDeque<S::Msg>
+    _messages: VecDeque<S::Msg>
 }
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
@@ -33,7 +35,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
             bases: vec![SpriteBase::default(); custom.len()].into(),
             custom: custom.into(),
             globals,
-            messages: VecDeque::new(),
+            _messages: VecDeque::new(),
         }
     }
 
@@ -45,7 +47,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
             let mut ctx = FrameCtx {
                 sprite,
                 globals: &mut self.globals,
-                render,
+                _render: render,
             };
             c.receive(&mut ctx, msg.clone());
         }

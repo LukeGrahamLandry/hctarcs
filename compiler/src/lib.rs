@@ -8,7 +8,7 @@ pub mod wasm_interface {
     use std::ffi::{c_char, CStr, CString};
     use std::ptr::slice_from_raw_parts;
     use crate::ast::Project;
-    use crate::backend::rust::{CARGO_TOML, emit_rust};
+    use crate::backend::rust::{emit_rust, make_cargo_toml};
     use crate::scratch_schema::parse;
 
     /// len does NOT include null terminator.
@@ -22,7 +22,7 @@ pub mod wasm_interface {
 
     #[no_mangle]
     pub extern "C" fn get_cargo_toml() -> *const c_char {
-        CString::new(CARGO_TOML).unwrap().into_raw()
+        CString::new(make_cargo_toml("notan")).unwrap().into_raw()
     }
 
     /// len DOES include null terminator

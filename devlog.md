@@ -14,6 +14,10 @@ It's pretty chonky to build so my not sharing workspace for generated projects i
 god-damn its annoying that I cant just pass the world into the init function because they want to 
 make stupid pretty builder for the easy case now you cant do anything. 
 
+Current runtime sizes on trivial mandelbrot so all size is renderer with (release, panic=abort, strip=debuginfo, lto=true):   
+native: (softbuffer=672 KB, notan=1829 KB) wasm: (notan= 985 KB + 55 KB js)
+pleasing that trunk serve just works. 
+
 ## planned refactoring (Dec 31)
 
 (1) TODO:

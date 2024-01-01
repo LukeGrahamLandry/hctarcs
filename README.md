@@ -16,6 +16,12 @@ BEWARE: There's no sandbox-ing. Only run projects on your computer if you unders
 - operating system with forth-like interpreter: [Johan-Mi/tres](https://github.com/Johan-Mi/tres) [scratch](https://scratch.mit.edu/projects/647528063/)
 - my trivial mandelbrot: [scratch](https://scratch.mit.edu/projects/945435432/)
 
+## Usage
+
+- For performance testing, make sure you build/run your generated project in release mode! It's much faster than debug. 
+- The output is just a normal rust project (with libraries implementing a scratch-like rendering interface). 
+That means you can use normal rust debugging/profiling software on it. 
+
 <!--
 ## Build
 

@@ -7,7 +7,7 @@ use std::io::{stdout, Write};
 use crate::backend::RenderBackend;
 use crate::poly::Str;
 use crate::ScratchProgram;
-use crate::sprite::{Line, Sprite, SpriteBase};
+use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
 pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
@@ -16,7 +16,7 @@ pub struct FrameCtx<'a, S: ScratchProgram<R>, R: RenderBackend<S>> {
     pub sprite: &'a mut SpriteBase,
     // pub vars: &'a mut S,
     pub globals: &'a mut S::Globals,
-    pub(crate) render: &'a mut R::Handle,
+    pub(crate) _render: &'a mut R::Handle,
 }
 
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
@@ -134,7 +134,6 @@ impl<'a, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, S, R> {
             })
         }
     }
-
 }
 
 thread_local! {

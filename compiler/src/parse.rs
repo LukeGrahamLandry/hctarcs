@@ -167,7 +167,7 @@ impl<'src> Parser<'src> {
 
         let mut functions = vec![];
         let entry = self.target.blocks.iter().filter(|(_, v)| v.opcode.starts_with("event_when"));
-        for (name, block) in entry {
+        for (_, block) in entry {
             //println!("Parse Func {name}");
             let start = self.parse_trigger(block);
             functions.push(Func {
@@ -424,7 +424,6 @@ impl<'src> Parser<'src> {
                         if let Some(right) = get_read_var(b) {
                             if matches!(a.as_ref(), Expr::Empty) && left == right {
                                 expr = Expr::IsNum(lhs);
-                                println!("IsNum {expr:?}");
                             }
                         }
                     }

@@ -33,9 +33,12 @@ pub fn emit_rust(project: &Project) -> String {
         };
         format!("\"{}\"=>Msg::{}, \n", project.var_names[name.0].escape_default(), trigger_msg_ident(project, *name))
     }).collect();
+    let backend_str = "notan"; // softbuffer
 
     format!(r#"
 {HEADER}
+// The type imported here must also be enabled in the `runtime` crate with a feature flag.
+type Backend = runtime::backend::{backend_str}::BackendImpl<Stage>;
 fn main() {{
     RenderBackend::<Stage>::run()
 }}
@@ -80,36 +83,39 @@ struct Emit<'src> {
     triggers: HashMap<Trigger, String>
 }
 
-pub const CARGO_TOML: &str = r#"
-[package]
-name = "scratch_out"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-runtime = { path = "../../../runtime" }  # TODO: compiler arg for local path or get from github
-
-[profile.release]
-panic = "abort"
-strip = "debuginfo" # true
-# lto = true
-# codegen-units = 1
-"#;
-
 const HEADER: &str = r#"
 //! This file is @generated from a Scratch project using github.com/LukeGrahamLandry/hctarcs
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(unused)]
 use runtime::*;
-use sprite::{SpriteBase, Sprite, Trigger};
-use poly::{Poly, Str, List};
+use sprite::*;
+use poly::*;
 use backend::RenderBackend;
 use runtime::builtins::*;
-type Backend = runtime::backend::notan::BackendImpl<Stage>;
 type Ctx<'a> = FrameCtx<'a, Stage, Backend>;
 "#;
 
+// TODO: enum
+pub fn make_cargo_toml(backend_name: &str) -> String {
+    format!(r#"
+[package]
+name = "scratch_out"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runtime = {{ path = "../../../runtime", features=["render-{backend_name}"] }}  # TODO: compiler arg for local path or get from github
+
+# Settings here will be ignored if you're using a cargo workspace.
+# Otherwise, uncomment to shink binary size.
+# [profile.release]
+# panic = "abort"
+# strip = "debuginfo" # true
+# lto = true # Enabling lto slows down incremental builds but greatly reduces binary size.
+# codegen-units = 1
+"#)
+}
 
 impl<'src> Emit<'src> {
     fn emit(&mut self) -> String {
@@ -275,7 +281,7 @@ impl Sprite<Stage, Backend> for {0} {{
                             } else {
                                 match (&lhs_t, &rhs_t) {
                                     (&SType::Number, &SType::Str) | (&SType::Str, &SType::Number) => Some(SType::Poly),
-                                    (&SType::Poly, other) | (other, &SType::Poly) => Some(SType::Poly),  // TODO: can do better
+                                    (&SType::Poly, _) | (_, &SType::Poly) => Some(SType::Poly),  // TODO: can do better
                                     _ => panic!("Need rule for {:?} == {:?}", lhs_t, rhs_t)
                                 }
                             }
