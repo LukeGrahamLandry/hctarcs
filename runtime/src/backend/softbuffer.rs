@@ -23,7 +23,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
 
     fn run() {
         let event_loop = EventLoop::new().unwrap();
-        let builder = WindowBuilder::new().with_title("hctarcs");
+        let builder = WindowBuilder::new().with_title("Hctarcs: softbuffer");
         // If you think this is dumb I dare you to fix it.
         let window = &*Box::leak(Box::new(builder.build(&event_loop).unwrap()));
         window.set_resizable(false);
@@ -76,7 +76,7 @@ impl<'a> RenderHandle for Handle<'a> {
         println!("TODO: pen_line {line:?}")
     }
 
-    fn pen_stamp(&mut self, pos: (f64, f64), costume: usize) {
-        println!("TODO: pen_stamp {pos:?} {costume:?}")
+    fn pen_stamp(&mut self, pos: (f64, f64), costume: usize, size: f64) {
+        println!("TODO: pen_stamp {pos:?} {costume:?} {size:?}")
     }
 }

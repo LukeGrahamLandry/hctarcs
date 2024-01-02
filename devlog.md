@@ -5,6 +5,10 @@
 
 Need a little wrapper of main because they use async next frame for easier wasm but I don't want to impose that on all backends. 
 
+- save project.json file for debugging panics
+- treat looks_costume as string for now
+- macroquad sprite rendering & stamping
+- test program that just stamps imgs in a pattern to compare positioning to real scratch
 
 TODO: support ios and android, should be easy with some backend. 
 TODO: cli flags to easily build native/wasm/phone. readme note that you don't need to use them

@@ -81,7 +81,8 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
     }
 
     pub fn pen_stamp(&mut self) {
-        self.render.pen_stamp(self.pos(), self.sprite.costume);
+        // TODO: make sure this uses sprite size not pen size
+        self.render.pen_stamp(self.pos(), self.sprite.costume, self.sprite.size_frac);
     }
 
     pub fn looks_hide(&self) {
@@ -92,8 +93,9 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         println!("pen_clear")
     }
 
-    pub fn looks_setsizeto(&self, _size: f64) {
-        println!("looks_setsizeto")
+    pub fn looks_setsizeto(&mut self, size: f64) {
+        // TODO: what are the limits?
+        self.sprite.size_frac = size / 100.0;
     }
 
     // TODO: each sprite has its own set of costumes and they can have overlapping names so really it has to pass in the id and costume_by_name needs to be on the sprite trait

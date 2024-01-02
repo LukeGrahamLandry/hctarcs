@@ -1,0 +1,44 @@
+(sprite "main"
+  (costumes "red" "assets/red.png" "green" "assets/green.png" "blue" "assets/blue.png")
+
+  (proc (when-flag-clicked) (render))
+
+  ; separate to enable Run without screen refresh
+  (proc (render)
+    (set-size 200)
+    (set-xy 0 0)
+    (erase-all)
+    (set-costume "red")
+    (line 10 10 10)
+    (once 240 180 "blue")
+    (once -240 -180 "green")  ; TODO: you can see slightly more of this corner in real scratch
+    (once -240 180 "red")
+    (once 240 -180 "red")
+    (line 10 10 10)
+    (set-xy 100 100)
+    (set-costume "blue")
+    (line 10 0 10)
+    (set-costume "green")
+    (line 0 -10 10)
+    (set-costume "red")
+    (line 10 0 3)
+    (set-costume "green")
+    (set-xy 0 -10)
+    )
+
+  (proc (once x y name)
+    (set-costume name)
+    (set-xy x y)
+    (stamp)
+    )
+  (proc (line x y count)
+    (repeat count 
+      (change-x x)
+      (change-y y)
+      (stamp)
+      )
+    )
+)
+
+(sprite "Stage"
+  (costumes "backdrop" "assets/blank.png"))

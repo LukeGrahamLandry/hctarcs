@@ -50,6 +50,10 @@ mod cli {
             let mut zip = ZipArchive::new(Cursor::new(bytes))?;
             let proj = zip.by_name("project.json")?;
             let raw = read_to_string(proj)?;
+            let mut path = opts.outdir.clone();
+            create_dir_all(&path)?;
+            path.push("project.json");
+            fs::write(path, raw.as_str())?;
             let project = parse(raw.as_str())?;
             let name = PathBuf::from(opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_");
 
@@ -75,6 +79,7 @@ mod cli {
         } else {
             panic!("Unsupported input. Expected url or local .sb3 file path.");
         };
+
 
         let project: Project = project.into();
         let result = emit_rust(&project, opts.render, opts.assets);
@@ -138,7 +143,7 @@ mod cli {
         #[arg(short, long)]
         outdir: PathBuf,
 
-        #[arg(long, default_value="notan")]
+        #[arg(long, default_value="macroquad")]
         render: Target,
 
         /// Use cargo fmt on the output.

@@ -2,10 +2,14 @@ use std::marker::PhantomData;
 use macroquad::miniquad::window::request_quit;
 use macroquad::prelude::*;
 use crate::{Argb, HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, Line, RenderBackend, RenderHandle, ScratchProgram, Trigger, World};
+use std::borrow::Borrow;
+use std::ops::{Div, Mul};
 
 pub struct BackendImpl<S: ScratchProgram<Self>>(PhantomData<S>);
 
-pub struct Handle();
+pub struct Handle {
+    costumes: Vec<Texture2D>
+}
 
 impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
     type Handle<'a> = Handle;
@@ -13,7 +17,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
     fn run() {
         let (window_width, window_height) = ((HALF_SCREEN_WIDTH * 2.0) as i32, (HALF_SCREEN_HEIGHT * 2.0) as i32);
         macroquad::Window::from_config(Conf {
-            window_title: "Hctarcs".to_string(),
+            window_title: "Hctarcs: macroquad".to_string(),
             window_width,
             window_height,
             ..Default::default()
@@ -32,7 +36,12 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             zoom: vec2(1.0 / HALF_SCREEN_WIDTH as f32, 1.0 / HALF_SCREEN_HEIGHT as f32),
             ..Default::default()
         };
-        let mut handle = Handle {};
+
+        let costumes = S::get_costumes()
+            .iter()
+            .map(|bytes| Texture2D::from_file_with_format(bytes.borrow(), None)).collect();
+
+        let mut handle = Handle { costumes };
 
         // All the draw commands during an event are to the static pen texture.
         set_camera(&pen_camera);
@@ -40,8 +49,12 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
         set_default_camera();
 
         loop {
-            clear_background(BLACK);
+            clear_background(WHITE);
             draw_texture(&pen.texture,0.0, 0.0, WHITE);
+            for sprite in &world.bases {
+                // TODO: fix wierd coordinate space
+                handle.pen_stamp((sprite.x + HALF_SCREEN_WIDTH, sprite.y - HALF_SCREEN_HEIGHT), sprite.costume, sprite.size_frac);
+            }
 
             if is_key_down(KeyCode::Escape) {
                 request_quit();
@@ -51,6 +64,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
     }
 }
 
+// TODO: why is drawing on the different camera in a different coordinate space?
 impl RenderHandle for Handle {
     fn pen_pixel(&mut self, (x, y): (f64, f64), colour: Argb) {
         let x = x as f32;
@@ -63,11 +77,21 @@ impl RenderHandle for Handle {
         println!("TODO: pen_line")
     }
 
-    fn pen_stamp(&mut self, _pos: (f64, f64), _costume: usize) {
-        println!("TODO: pen_stamp")
+    fn pen_stamp(&mut self, (x, y): (f64, f64), costume: usize, size: f64) {
+        let x = x as f32;
+        let y = -y as f32;
+        // TODO: correct starting costume. shouldn't be in the backend tho
+        let size = self.costumes[costume].size().div(2.0).mul(size as f32);
+        draw_texture_ex(&self.costumes[costume], x - (size.x / 2.0), y - (size.y / 2.0), WHITE, DrawTextureParams {
+            dest_size: Some(size),
+            source: None,
+            rotation: 0.0,
+            flip_x: false,
+            flip_y: false,
+            pivot: None,
+        });
     }
 }
-
 
 impl From<Argb> for Color {
     fn from(value: Argb) -> Self {

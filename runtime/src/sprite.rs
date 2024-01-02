@@ -14,7 +14,8 @@ pub struct SpriteBase {
     // TODO: is this shared across sprites?
     // TODO: Will be async
     pub last_answer: String,
-    pub costume: usize
+    pub costume: usize,
+    pub size_frac: f64,
 }
 
 #[derive(Clone, Default, Debug)]

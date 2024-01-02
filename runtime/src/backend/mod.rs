@@ -21,5 +21,5 @@ pub trait RenderHandle {
     fn pen_pixel(&mut self, pos: (f64, f64), colour: Argb);
     fn pen_line(&mut self, line: Line);
 
-    fn pen_stamp(&mut self, pos: (f64, f64), costume: usize);
+    fn pen_stamp(&mut self, pos: (f64, f64), costume: usize, size: f64);
 }

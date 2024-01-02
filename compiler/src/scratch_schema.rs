@@ -163,6 +163,9 @@ pub enum Field {
     List {
         LIST: Operand,
     },
+    Costume {
+        COSTUME: Operand
+    },
     // TODO: How to match empty?
     Named(HashMap<String, Operand>),
 }

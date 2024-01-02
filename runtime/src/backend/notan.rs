@@ -41,7 +41,7 @@ impl<S: ScratchProgram<Self>> RenderBackend<S> for BackendImpl<S> {
 impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
     fn init(app: &mut App, gfx: &mut Graphics) -> Self {
         app.window().set_size(2 * HALF_SCREEN_WIDTH as u32, 2 * HALF_SCREEN_HEIGHT as u32);
-        app.window().set_title("Hctarcs");
+        app.window().set_title("Hctarcs: notan");
         let (width, height) = app.window().size();
         let len = (width * height * 4) as usize;
         let bytes = vec![0; len];
@@ -76,27 +76,31 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
         // state.world.broadcast(&mut _handle, Trigger::FlagClicked);
 
         // Update the texture with the new data
+        // TODO: have a dirty flag so dont do this on frames that didn't use the pen
         gfx.update_texture(&mut state.state.texture)
             .with_data(&state.state.bytes)
             .update()
             .unwrap();
 
         let mut draw = gfx.create_draw();
-        draw.clear(Color::BLACK);
-        for (x, y, _costume) in &state.state.stamps {
-            let img = &state.state.costumes[1];
+        draw.clear(Color::WHITE);
+        for (x, y, costume) in &state.state.stamps {
+            let img = &state.state.costumes[*costume];
             let scale = 0.5; // 100.0 / img.width();
+            // TODO: this is wrong. macroquad does tests/stamp_pos correctly
+            let (x, y) = ((*x * 2.0) + (img.size().0 * 2.0) + HALF_SCREEN_WIDTH as f32, (*y * 2.0) + (img.size().1) + HALF_SCREEN_HEIGHT as f32);
             draw
                 .image(img)
-                .position(*x + (img.size().0 * scale), *y + (img.size().1 * scale))
+                .position(x, y)
                 // .position(*x, *y)
-                .scale(scale, scale);
-
+                .scale(scale, scale)
+            ;
         }
         // TODO: the stamps need to be drawn onto this texture gradually instead.
         // There's an impl CreateDraw for RenderTexture
         // can i do like this but no shaders https://github.com/Nazariglez/notan/blob/main/examples/renderer_render_texture.rs
         draw.image(&state.state.texture);
+        // TODO: draw current sprites
         gfx.render(&draw);
     }
 
@@ -123,9 +127,10 @@ impl<'a> RenderHandle for Handle<'a> {
         println!("TODO: pen_line {line:?}")
     }
 
-    fn pen_stamp(&mut self, (x, y): (f64, f64), costume: usize) {
-        let x = (x + HALF_SCREEN_WIDTH) as f32;
-        let y = (HALF_SCREEN_HEIGHT - y) as f32;
+    fn pen_stamp(&mut self, (x, y): (f64, f64), costume: usize, size: f64) {
+        // TODO: use size
+        let x = (x) as f32;
+        let y = (-y) as f32;
         assert!(costume < self.state.costumes.len());
         self.state.stamps.push((x, y, costume));
         println!("stamp {x}, {y} {costume}")
