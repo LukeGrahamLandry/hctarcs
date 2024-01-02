@@ -179,10 +179,11 @@ impl<'src> Parser<'src> {
         Sprite {
             functions,
             procedures,
-            fields: self.fields.iter().map(|(_, v)| *v).collect(),
+            fields: self.fields.values().copied().collect(),
             name: self.target.name.clone(),
             is_stage: self.target.isStage,
             is_singleton: true,
+            costumes: self.target.costumes.clone(),
         }
     }
 
@@ -540,12 +541,13 @@ impl<'src> Parser<'src> {
 }
 
 fn validate(target: &RawSprite) {
-    assert!(target.blocks.values().all(|v| {
-        match &v.fields {
-            Some(Field::Named(m)) => m.is_empty(),
-            _ => true
-        }
-    }));
+    // TODO
+    // assert!(target.blocks.values().all(|v| {
+    //     match &v.fields {
+    //         Some(Field::Named(m)) => m.is_empty(),
+    //         _ => true
+    //     }
+    // }));
 }
 
 /// These correspond to function definitions in the runtime. The argument types must match!

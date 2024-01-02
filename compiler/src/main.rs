@@ -1,3 +1,5 @@
+use clap::ValueEnum;
+
 fn main() {
     #[cfg(feature = "cli")]
     cli::run().unwrap();
@@ -10,13 +12,14 @@ fn main() {
 #[cfg(feature = "cli")]
 mod cli {
     use std::fs;
-    use std::fs::create_dir_all;
-    use std::io::{Cursor, read_to_string};
+    use std::fs::{create_dir_all, File};
+    use std::io::{Cursor, Read, read_to_string};
     use std::path::PathBuf;
     use std::process::Command;
     use clap::{Parser, ValueEnum};
     use serde::Deserialize;
     use zip::ZipArchive;
+    use compiler::{AssetPackaging, Target};
     use compiler::ast::Project;
     use compiler::backend::rust::{emit_rust, make_cargo_toml};
     use compiler::scratch_schema::parse;
@@ -25,7 +28,7 @@ mod cli {
         let opts = Cli::parse();
         assert_eq!(opts.assets, AssetPackaging::Embed);
 
-        let (raw, name) = if opts.input.starts_with("http") {
+        let (project, name) = if opts.input.starts_with("http") {
             assert!(opts.input.contains("scratch.mit.edu/projects") || opts.input.contains("turbowarp.org"));
             let id = opts.input.split("?").nth(0).unwrap().trim_end_matches("/").split("/").last().unwrap().trim();
             let id_num = id.parse::<u64>()?;
@@ -37,24 +40,45 @@ mod cli {
             // TODO: put author credit in cargo toml
             println!("Fetching project {}: {}", info.id, info.title);
             assert_eq!(id_num, info.id);
-            let project_json = ureq::get(&format!("https://projects.scratch.mit.edu/{id}?token={}", info.project_token))
+            let raw = ureq::get(&format!("https://projects.scratch.mit.edu/{id}?token={}", info.project_token))
                 .set("User-Agent", &opts.user_agent)
                 .call()?.into_string()?;
 
-            (project_json, format!("s{id}"))
+            let project = parse(raw.as_str())?;
+
+
+            (project, format!("s{id}"))
         } else if opts.input.ends_with(".sb3") {
             let bytes = fs::read(PathBuf::from(&opts.input))?;
             let mut zip = ZipArchive::new(Cursor::new(bytes))?;
             let proj = zip.by_name("project.json")?;
             let raw = read_to_string(proj)?;
-            (raw,  PathBuf::from(opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_"))
+            let project = parse(raw.as_str())?;
+            let name = PathBuf::from(opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_");
+
+            // TODO be smarter about this for web.
+            project.targets
+                .iter()
+                .flat_map(|t| t.costumes.iter())
+                .for_each(|c| {
+                    let mut file = zip.by_name(&c.md5ext).unwrap();
+                    let mut path = opts.outdir.clone();
+                    path.push("src");
+                    path.push("assets");
+                    fs::create_dir_all(&path).unwrap();
+                    path.push(c.md5ext.clone());
+                    let mut buf = vec![];
+                    file.read_to_end(&mut buf).unwrap();
+                    fs::write(path, buf).unwrap();
+                });
+
+            (project, name)
         } else {
             panic!("Unsupported input. Expected url or local .sb3 file path.");
         };
 
-        let project = parse(raw.as_str())?;
         let project: Project = project.into();
-        let result = emit_rust(&project, opts.render.code_name());
+        let result = emit_rust(&project, opts.render);
 
         let mut path = opts.outdir.clone();
         path.push("src");
@@ -62,7 +86,7 @@ mod cli {
         path.push("main.rs");
         fs::write(path, &result)?;
 
-        let cargotoml = make_cargo_toml(opts.render.code_name()).replace("scratch_out", &name);
+        let cargotoml = make_cargo_toml(opts.render).replace("scratch_out", &name);
         let mut path = opts.outdir.clone();
         path.push("Cargo.toml");
         fs::write(path, cargotoml)?;
@@ -147,27 +171,6 @@ mod cli {
         assets: AssetPackaging,
     }
 
-    #[derive(Copy, Clone, Debug, ValueEnum, Eq, PartialEq)]
-    enum AssetPackaging {
-        Embed,
-        Fetch,
-    }
-
-    #[derive(Copy, Clone, Debug, ValueEnum, Eq, PartialEq)]
-    enum Target {
-        Notan,
-        Softbuffer,
-    }
-
-    impl Target {
-        fn code_name(&self) -> &str {
-            match self {
-                Target::Notan => "notan",
-                Target::Softbuffer => "softbuffer",
-            }
-        }
-    }
-
     #[derive(Deserialize)]
     struct ScratchApiResponse {
         id: u64,
@@ -182,3 +185,4 @@ mod cli {
     //     username: String,
     // }
 }
+

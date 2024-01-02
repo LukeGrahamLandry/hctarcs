@@ -107,4 +107,8 @@ impl<'a, 'b> RenderHandle for Handle<'a, 'b> {
     fn pen_line(&mut self, _line: Line) {
         todo!()
     }
+
+    fn pen_stamp(&mut self, pos: (f64, f64), costume: usize) {
+        todo!()
+    }
 }

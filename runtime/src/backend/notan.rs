@@ -4,6 +4,7 @@ use crate::backend::RenderBackend;
 use crate::{Argb, RenderHandle, ScratchProgram, World};
 use crate::builtins::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH};
 use crate::sprite::Trigger;
+use std::borrow::Borrow;
 
 #[derive(AppState)]
 pub struct BackendImpl<S: ScratchProgram<BackendImpl<S>>> {
@@ -13,7 +14,9 @@ pub struct BackendImpl<S: ScratchProgram<BackendImpl<S>>> {
 
 pub struct State {
     texture: Texture,
+    costumes: Vec<Texture>,
     bytes: Vec<u8>,
+    stamps: Vec<(f32, f32, usize)>
 }
 
 pub struct Handle<'frame> {
@@ -49,8 +52,10 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             .build()
             .unwrap();
 
+        let costumes = S::get_costumes().iter().map(|bytes| gfx.create_texture().from_image(bytes.borrow()).build().unwrap()).collect();
+
         let mut s = Self {
-            state: State { texture, bytes },
+            state: State { texture, costumes, bytes, stamps: vec![] },
             world: World::new(),
         };
 
@@ -66,7 +71,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
     }
 
     fn draw(gfx: &mut Graphics, state: &mut Self) {
-        let _handle = Handle {
+        let mut _handle = Handle {
             state: &mut state.state,
             gfx,
         };
@@ -77,11 +82,26 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             .update()
             .unwrap();
 
-        // Draw the texture using the draw 2d API for convenience
         let mut draw = gfx.create_draw();
         draw.clear(Color::BLACK);
-        draw.image(&state.state.texture);
+        for (x, y, costume) in &state.state.stamps {
+            let img = &state.state.costumes[1];
+            let scale = 0.5; // 100.0 / img.width();
+            draw
+                .image(img)
+                .position(*x + (img.size().0 * scale), *y + (img.size().1 * scale))
+                // .position(*x, *y)
+                .scale(scale, scale);
+
+        }
         gfx.render(&draw);
+
+
+        // Draw the texture using the draw 2d API for convenience
+        // let mut draw = gfx.create_draw();
+        // draw.clear(Color::BLACK);
+        // draw.image(&state.state.texture);
+        // gfx.render(&draw);
     }
 
 
@@ -105,6 +125,14 @@ impl<'a> RenderHandle for Handle<'a> {
 
     fn pen_line(&mut self, line: crate::Line) {
         todo!()
+    }
+
+    fn pen_stamp(&mut self, (x, y): (f64, f64), costume: usize) {
+        let x = (x + HALF_SCREEN_WIDTH) as f32;
+        let y = (HALF_SCREEN_HEIGHT - y) as f32;
+        assert!(costume < self.state.costumes.len());
+        self.state.stamps.push((x, y, costume));
+        println!("stamp {x}, {y} {costume}")
     }
 }
 

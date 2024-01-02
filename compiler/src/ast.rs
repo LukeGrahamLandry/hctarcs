@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use crate::scratch_schema::Costume;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Project {
@@ -17,6 +18,7 @@ pub struct Sprite {
     pub name: String,
     pub is_stage: bool,
     pub is_singleton: bool,
+    pub costumes: Vec<Costume>
 }
 
 /// A stack of scratch blocks with a trigger

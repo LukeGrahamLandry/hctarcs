@@ -81,9 +81,8 @@ impl<'a, 'frame, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, 'frame,
         Str::Owned(self.sprite.last_answer.clone())
     }
 
-    // TODO
-    pub fn pen_stamp(&self) {
-        // println!("pen_stamp")
+    pub fn pen_stamp(&mut self) {
+        self.render.pen_stamp(self.pos(), self.sprite.costume);
     }
 
     pub fn looks_hide(&self) {
@@ -98,8 +97,12 @@ impl<'a, 'frame, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, 'frame,
         println!("looks_setsizeto")
     }
 
-    // TODO
-    pub fn looks_switchcostumeto(&self, costume: Str) {
+    // TODO: each sprite has its own set of costumes and they can have overlapping names so really it has to pass in the id and costume_by_name needs to be on the sprite trait
+    pub fn looks_switchcostumeto(&mut self, costume: Str) {
+        if let Some(id) = S::costume_by_name(costume.clone()) {
+            self.sprite.costume = id;
+        }
+
         match costume {
             Str::Char(c) => {
                 print!("{c}");

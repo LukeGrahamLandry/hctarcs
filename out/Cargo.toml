@@ -4,6 +4,7 @@ members = [
     "gen/tres",
     "gen/sanity",
     "gen/mandelbrot",
+    "gen/teststamp",
 ]
 resolver = "2"
 

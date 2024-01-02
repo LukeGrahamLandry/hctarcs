@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
+use crate::Target;
 
-pub fn emit_rust(project: &Project, backend_str: &str) -> String {
+pub fn emit_rust(project: &Project, backend: Target) -> String {
     let msgs: HashSet<Trigger> = project.targets.
         iter()
-        .map(|target|
-            target.functions.iter().map(|f| f.start.clone())
-        )
-        .flatten()
+        .flat_map(|target|
+            target.functions.iter().map(|f| f.start))
         .filter(|t| matches!(t, Trigger::Message(_)))
         .collect();
     let msg_fields: HashSet<String> = msgs.iter().map(|t| {
@@ -34,6 +33,16 @@ pub fn emit_rust(project: &Project, backend_str: &str) -> String {
         format!("\"{}\"=>Msg::{}, \n", project.var_names[name.0].escape_default(), trigger_msg_ident(project, *name))
     }).collect();
 
+    // TODO: dups?
+    let costumes: Vec<_> = project.targets
+        .iter()
+        .flat_map(|t| t.costumes.clone())
+        .enumerate().collect();
+
+    let costume_names: String = costumes.iter().map(|(i, c)| format!("\"{}\" => Some({i}),\n", c.name.escape_default())).collect();
+    let costume_includes: String = costumes.iter().map(|(_, c)| format!("include_bytes!(\"assets/{}\"),", c.md5ext)).collect();
+
+    let backend_str = backend.code_name();
     format!(r#"
 {HEADER}
 // The type imported here must also be enabled in the `runtime` crate with a feature flag.
@@ -45,8 +54,20 @@ fn main() {{
 impl ScratchProgram<Backend> for Stage {{
     type Msg = Msg;
     type Globals = Stage;
+    type Bytes = &'static [u8];
     fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
         (Stage::default(), vec![{sprites}])
+    }}
+
+    fn get_costumes() -> Vec<Self::Bytes> {{
+        vec![{costume_includes}]
+    }}
+
+    fn costume_by_name(name: Str) -> Option<usize> {{
+        match name.as_ref() {{
+            {costume_names}
+            _ => None, // Silently ignore
+        }}
     }}
 }}
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -96,7 +117,7 @@ type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
 "#;
 
 // TODO: enum
-pub fn make_cargo_toml(backend_name: &str) -> String {
+pub fn make_cargo_toml(backend: Target) -> String {
     format!(r#"
 [package]
 name = "scratch_out"
@@ -104,7 +125,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-runtime = {{ path = "../../../runtime", features=["render-{backend_name}"] }}  # TODO: compiler arg for local path or get from github
+runtime = {{ path = "../../../runtime", features=["render-{}"] }}  # TODO: compiler arg for local path or get from github
+# TODO: feature fetch-assets
 
 # Settings here will be ignored if you're using a cargo workspace.
 # Otherwise, uncomment to shink binary size.
@@ -113,7 +135,7 @@ runtime = {{ path = "../../../runtime", features=["render-{backend_name}"] }}  #
 # strip = "debuginfo" # true
 # lto = true # Enabling lto slows down incremental builds but greatly reduces binary size.
 # codegen-units = 1
-"#)
+"#, backend.code_name())
 }
 
 impl<'src> Emit<'src> {

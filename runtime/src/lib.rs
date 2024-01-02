@@ -1,5 +1,7 @@
-use std::collections::VecDeque;
+use std::borrow::Borrow;
+use std::collections::{HashMap, VecDeque};
 use std::env;
+use std::io::Read;
 
 pub mod sprite;
 pub mod builtins;
@@ -15,7 +17,15 @@ pub use backend::*;
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Copy;
     type Globals;
+
+    // Depends on asset loading. Can be static literal if embedded or Vec if fetched at runtime.
+    type Bytes: Borrow<[u8]>;
+
     fn create_initial_state() -> (Self::Globals, Vec<Box<dyn Sprite<Self, R>>>);
+
+    fn get_costumes() -> Vec<Self::Bytes>;
+
+    fn costume_by_name(name: Str) -> Option<usize>;
 }
 
 /// Types for Msg and Globals are generated for a specific scratch program by the compiler.
@@ -52,6 +62,16 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
             c.receive(&mut ctx, msg.clone());
         }
     }
+}
+
+#[cfg(feature = "fetch-assets")]
+pub fn fetch(md5ext: &str) -> Vec<u8> {
+    let mut res = ureq::get(&format!("https://scratch.mit.edu/static/assets/{md5ext}"))
+        .set("User-Agent", "github/lukegrahamlandry/hctarcs/runtime")
+        .call().unwrap().into_reader();
+    let mut buf = Vec::<u8>::new();
+    res.read_to_end(&mut buf).unwrap();
+    buf
 }
 
 fn credits() {

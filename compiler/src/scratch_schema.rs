@@ -16,7 +16,14 @@ pub struct RawSprite {
     pub name: String,
     pub variables: HashMap<String, Operand>,
     pub lists: HashMap<String, Operand>,
-    pub blocks: HashMap<String, Block>
+    pub blocks: HashMap<String, Block>,
+    pub costumes: Vec<Costume>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Costume {
+    pub name: String,
+    pub md5ext: String
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -275,15 +282,15 @@ impl Field {
 
 impl Mutation {
     pub fn arg_ids(&self) -> Vec<String> {
-        serde_json::from_str(&self.argumentids.as_ref().unwrap()).unwrap()
+        serde_json::from_str(self.argumentids.as_ref().unwrap()).unwrap()
     }
 
     pub fn arg_names(&self) -> Vec<String> {
-        serde_json::from_str(&self.argumentnames.as_ref().expect("Func Proto")).unwrap()
+        serde_json::from_str(self.argumentnames.as_ref().expect("Func Proto")).unwrap()
     }
 
     pub fn arg_defaults(&self) -> Vec<String> {
-        serde_json::from_str(&self.argumentdefaults.as_ref().expect("Func Proto")).unwrap()
+        serde_json::from_str(self.argumentdefaults.as_ref().expect("Func Proto")).unwrap()
     }
 
     pub fn arity(&self) -> usize {

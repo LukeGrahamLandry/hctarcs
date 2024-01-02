@@ -7,6 +7,13 @@ wasted so much type trying to get lifetimes to work out on the softbuffer backen
 
 Want the option to include in the binary or download at runtime (need some sort of caching I guess).
 
+Backend probably just wants a list of textures so when a sprite wants to switch texture it needs to look it up by name 
+or scratch index (since you can do next_costume) so need a different mapping of str/int -> int for each type of sprite. 
+
+TODO: figure out how to use notan's draw onto an offscreen texture and render that every frame instead 
+of saving all the pen stamps in a list and replaying them. Needs to be the same texture used for pen pixels. 
+Logic being sprites are draw in their current position each frame so need to clear the screen but pen persists until explicitly cleared. 
+
 TODO: unrelated, I wonder if scratch-compiler-2 return values support recursive fibonacci
 
 ## nicer interface (Dec 31)
