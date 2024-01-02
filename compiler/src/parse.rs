@@ -541,13 +541,12 @@ impl<'src> Parser<'src> {
 }
 
 fn validate(target: &RawSprite) {
-    // TODO
-    // assert!(target.blocks.values().all(|v| {
-    //     match &v.fields {
-    //         Some(Field::Named(m)) => m.is_empty(),
-    //         _ => true
-    //     }
-    // }));
+    assert!(target.blocks.values().all(|v| {
+        match &v.fields {
+            Some(Field::Named(m)) => m.is_empty(),
+            _ => true
+        }
+    }));
 }
 
 /// These correspond to function definitions in the runtime. The argument types must match!

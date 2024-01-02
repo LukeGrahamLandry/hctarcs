@@ -94,14 +94,11 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
                 .scale(scale, scale);
 
         }
+        // TODO: the stamps need to be drawn onto this texture gradually instead.
+        // There's an impl CreateDraw for RenderTexture
+        // can i do like this but no shaders https://github.com/Nazariglez/notan/blob/main/examples/renderer_render_texture.rs
+        draw.image(&state.state.texture);
         gfx.render(&draw);
-
-
-        // Draw the texture using the draw 2d API for convenience
-        // let mut draw = gfx.create_draw();
-        // draw.clear(Color::BLACK);
-        // draw.image(&state.state.texture);
-        // gfx.render(&draw);
     }
 
 

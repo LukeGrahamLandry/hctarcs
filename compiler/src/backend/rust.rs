@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
-use crate::Target;
+use crate::{AssetPackaging, Target};
 
-pub fn emit_rust(project: &Project, backend: Target) -> String {
+// TODO: it would be more elegant if changing render backend was just a feature flag, not a src change. same for AssetPackaging but thats harder cause it only needs to copy the files there for embed
+pub fn emit_rust(project: &Project, backend: Target, assets: AssetPackaging) -> String {
     let msgs: HashSet<Trigger> = project.targets.
         iter()
         .flat_map(|target|
@@ -33,12 +34,17 @@ pub fn emit_rust(project: &Project, backend: Target) -> String {
         format!("\"{}\"=>Msg::{}, \n", project.var_names[name.0].escape_default(), trigger_msg_ident(project, *name))
     }).collect();
 
-    // TODO: dups?
+    // TODO: dups? names need to be unique to the spite but make sure not to include same assets twice.
     let costumes: Vec<_> = project.targets
         .iter()
         .flat_map(|t| t.costumes.clone())
         .enumerate().collect();
 
+    for (_, c) in &costumes {
+        assert!(["png", "gif"].contains(&&*c.dataFormat), "Unsupported asset format for {:?}", c);
+    }
+
+    assert_eq!(assets, AssetPackaging::Embed);
     let costume_names: String = costumes.iter().map(|(i, c)| format!("\"{}\" => Some({i}),\n", c.name.escape_default())).collect();
     let costume_includes: String = costumes.iter().map(|(_, c)| format!("include_bytes!(\"assets/{}\"),", c.md5ext)).collect();
 
@@ -117,7 +123,7 @@ type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
 "#;
 
 // TODO: enum
-pub fn make_cargo_toml(backend: Target) -> String {
+pub fn make_cargo_toml(backend: Target, assets: AssetPackaging) -> String {
     format!(r#"
 [package]
 name = "scratch_out"
@@ -125,7 +131,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-runtime = {{ path = "../../../runtime", features=["render-{}"] }}  # TODO: compiler arg for local path or get from github
+runtime = {{ path = "../../../runtime", features=["render-{}",] }}  # TODO: compiler arg for local path or get from github
 # TODO: feature fetch-assets
 
 # Settings here will be ignored if you're using a cargo workspace.

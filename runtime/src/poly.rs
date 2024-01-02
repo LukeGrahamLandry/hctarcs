@@ -105,59 +105,13 @@ impl Str {
         }) as f64
     }
 
-    // TODO: this is kinda ass
+    // TODO: its unfortunate that this doesnt take self by value. need to track ownership in the compiler.
     #[must_use = "Allocates a new string, does not mutate the original."]
     pub fn join(&self, other: Str) -> Str {
-        // TODO: I was trying so hard to not just clone it but gave up
-        match self.clone() {
-            Str::Const(s) => match other {
-                Str::Const(s2) => {
-                    let mut s3 = String::with_capacity(s.len() + s2.len());
-                    s3.push_str(s);
-                    s3.push_str(s2);
-                    Str::Owned(s3)
-                },
-                Str::Char(c)  => {
-                    let mut s3 = String::with_capacity(s.len() + 1);
-                    s3.push(c);
-                    s3.push_str(s);
-                    Str::Owned(s3)
-                },
-                Str::Owned(s2) => {
-                    // TODO: reuse allocation
-                    let mut s3 = String::with_capacity(s.len() + s2.len());
-                    s3.push_str(s);
-                    s3.push_str(s2.as_str());
-                    Str::Owned(s3)
-                },
-            }
-            Str::Char(c) => match other {
-                Str::Const(s2) => {
-                    let mut s = String::with_capacity(s2.len() + 1);
-                    s.push(c);
-                    s.push_str(s2);
-                    Str::Owned(s)
-                },
-                Str::Char(c2)  => {
-                    let mut s = String::with_capacity(2);
-                    s.push(c);
-                    s.push(c2);
-                    Str::Owned(s)
-                },
-                Str::Owned(mut s2) => {
-                    s2.insert(0, c);
-                    Str::Owned(s2)
-                },
-            }
-            Str::Owned(mut s) => match other {
-                Str::Const(s2) => Str::Owned(s + s2),
-                Str::Char(c)  => {
-                    s.push(c);
-                    Str::Owned(s)
-                },
-                Str::Owned(s2) => Str::Owned(s + s2.as_str()),
-            }
-        }
+        let mut s = String::with_capacity((self.len() + other.len()) as usize);
+        s.push_str(self.as_ref());
+        s.push_str(other.as_ref());
+        Str::Owned(s)
     }
 }
 
@@ -198,18 +152,34 @@ impl<T: Clone + Debug> List<T> {
     }
 }
 
-impl<T: Clone + Debug> Index<f64> for List<T> {
+impl<T: Clone + Debug + ConstEmpty> Index<f64> for List<T> {
     type Output = T;
 
     fn index(&self, index: f64) -> &Self::Output {
         let index = index - 1.0;
         if index >= 0.0 && index < self.len() {  // Rounding
             &self.0[index as usize]
-        } else {
-            // TODO: its hard to silently fail here cause of the references thing.
-            todo!("List[OOB] index {} in len {}", index, self.0.len())
+        } else {  // Fail silently
+            T::EMPTY
         }
     }
+}
+
+// Different from default because there's a const instance so you can return an immutable reference to it.
+trait ConstEmpty: 'static {
+    const EMPTY: &'static Self;
+}
+
+impl ConstEmpty for f64 {
+    const EMPTY: &'static Self = &0.0;
+}
+
+impl ConstEmpty for Poly {
+    const EMPTY: &'static Self = &Poly::Empty;
+}
+
+impl ConstEmpty for Str {
+    const EMPTY: &'static Self = &Str::Const("");
 }
 
 impl From<f64> for Poly {
@@ -267,8 +237,11 @@ impl AsRef<str> for Str {
             Str::Owned(s) => s.as_str(),
             Str::Char(c) => {
                 assert!(size_of::<char>() <= size_of::<usize>()); // if the compiler cant figure out this is constant, there are larger problems in the world.
-                let i = *c as usize;  // if you're somehow on a 16 bit machine you deserve whatever you get
-                assert!(i < 128usize, "non-ascii char->str is not supported yet");
+                let mut i = *c as usize;  // if you're somehow on a 16 bit machine you deserve whatever you get
+                if i >= 128usize { // TOD0: non-ascii char->str is not supported yet
+                    i = 0;
+                }
+
                 &ASCII[i..i + 1]
             }
         }

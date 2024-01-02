@@ -20,7 +20,7 @@ pub struct Handle<'a, 'b> {
 }
 
 impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
-    type Handle<'a, 'b: 'a> = Handle<'a ,'b>;
+    type Handle<'a, 'b: 'a> = Handle<'a, 'b>;
 
     fn run() {
         let event_loop = EventLoop::new().unwrap();
@@ -33,21 +33,13 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
 
         let mut world = World::<S, Self>::new();
         // TODO: hateful lifetimes. why doesnt this work? somehow im saying surface lives longer than window?
-        let surface = Box::leak(Box::new(softbuffer::Surface::new(&context, &window).unwrap()));
-        surface
-            .resize(
-                NonZeroU32::new(480).unwrap(),
-                NonZeroU32::new(360).unwrap(),
-            )
-            .unwrap();
-
-
-        {
-            // TODO: now this is borrowing forever???? so can use in loop
-            let mut handle = Handle { buffer: surface.buffer_mut().unwrap() };
-            world.broadcast(&mut handle, Trigger::FlagClicked);
-            handle.buffer.present().unwrap();
-        }
+        let mut surface = softbuffer::Surface::new(&context, &window).unwrap();
+        // surface
+        //     .resize(
+        //         NonZeroU32::new(480).unwrap(),
+        //         NonZeroU32::new(360).unwrap(),
+        //     )
+        //     .unwrap();
 
         event_loop.set_control_flow(ControlFlow::Wait);  // Poll
         event_loop.run(|event, elwt| {
@@ -65,16 +57,20 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
                     event: WindowEvent::RedrawRequested,
                     ..
                 } => {
-                    // let (width, height) = {
-                    //     let size = window.inner_size();
-                    //     (size.width, size.height)
-                    // };
-                    // surface
+                    let (width, height) = {
+                        let size = window.inner_size();
+                        (size.width, size.height)
+                    };
+                    // surfacex
                     //     .resize(
                     //         NonZeroU32::new(width).unwrap(),
                     //         NonZeroU32::new(height).unwrap(),
                     //     )
                     //     .unwrap();
+
+                    let mut handle = Handle { buffer: surface.buffer_mut().unwrap() };
+                    world.broadcast(&mut handle, Trigger::FlagClicked);
+                    // handle.buffer.present().unwrap();
 
                 }
 
@@ -108,7 +104,7 @@ impl<'a, 'b> RenderHandle for Handle<'a, 'b> {
         todo!()
     }
 
-    fn pen_stamp(&mut self, pos: (f64, f64), costume: usize) {
+    fn pen_stamp(&mut self, _pos: (f64, f64), _costume: usize) {
         todo!()
     }
 }

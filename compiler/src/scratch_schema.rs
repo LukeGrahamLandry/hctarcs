@@ -23,7 +23,8 @@ pub struct RawSprite {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Costume {
     pub name: String,
-    pub md5ext: String
+    pub md5ext: String,
+    pub dataFormat: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

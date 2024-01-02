@@ -1,4 +1,22 @@
 
+## idea: canvas? (Jan 1)
+
+```rust 
+//! A backend that uses the simple HTML5/JS canvas api directly (no wasm-bindgen/emscripten and no webgl/webgpu).
+#[cfg(not(target_arch = "wasm32"))]
+compile_error!("The canvas backend only supports wasm.");
+extern "C" {
+  pub fn draw_line(c: usize, x1: f64, y1: f64, x2: f64, y2: f64, size: f64, r: u8, g: u8, b: u8);
+  pub fn draw_pixel(c: usize, x: f64, y: f64, r: u8, g: u8, b: u8);
+  pub fn draw_text(c: usize, x: f64, y: f64, chars: *const u8, len: usize);
+  pub fn draw_texture(c: usize, t: usize/* TextureId */, x: f64, y: f64, w: f64, h: f64);
+  pub fn load_texture(c: usize, bytes: *const u8, len: usize) -> usize/* TextureId */;
+  pub fn fetch_texture(c: usize, path: *const u8, len: usize) -> usize/* TextureId */;
+}
+```
+
+
+
 ## including assets (Jan 1)
 
 As practice, make line drawing go through render handle so don't need to save them all in a list. 

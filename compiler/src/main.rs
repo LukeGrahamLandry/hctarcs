@@ -46,7 +46,6 @@ mod cli {
 
             let project = parse(raw.as_str())?;
 
-
             (project, format!("s{id}"))
         } else if opts.input.ends_with(".sb3") {
             let bytes = fs::read(PathBuf::from(&opts.input))?;
@@ -56,6 +55,8 @@ mod cli {
             let project = parse(raw.as_str())?;
             let name = PathBuf::from(opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_");
 
+            // TODO: if Assets::fetch, do a dry run to make sure scratch has the referenced things (it might be a local sb3 never shared)
+            // TODO: Assets::fetch option to change base url
             // TODO be smarter about this for web.
             project.targets
                 .iter()
@@ -78,7 +79,7 @@ mod cli {
         };
 
         let project: Project = project.into();
-        let result = emit_rust(&project, opts.render);
+        let result = emit_rust(&project, opts.render, opts.assets);
 
         let mut path = opts.outdir.clone();
         path.push("src");
@@ -86,7 +87,10 @@ mod cli {
         path.push("main.rs");
         fs::write(path, &result)?;
 
-        let cargotoml = make_cargo_toml(opts.render).replace("scratch_out", &name);
+        let cargotoml = match opts.cargotoml {
+            None => make_cargo_toml(opts.render, opts.assets).replace("scratch_out", &name),
+            Some(path) => fs::read_to_string(path)?,
+        };
         let mut path = opts.outdir.clone();
         path.push("Cargo.toml");
         fs::write(path, cargotoml)?;
@@ -169,6 +173,9 @@ mod cli {
 
         #[arg(long, default_value="embed")]
         assets: AssetPackaging,
+
+        #[arg(long)]
+        wasm: bool
     }
 
     #[derive(Deserialize)]

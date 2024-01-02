@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{VecDeque};
 use std::env;
 use std::io::Read;
 
@@ -51,7 +51,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
 
     // TODO: the compiler knows which messages each type wants to listen to.
     //       it could generate a separate array for each and have no virtual calls or traversing everyone on each message
-    pub fn broadcast<'a, 'frame: 'a>(&'a mut self, render: &'a mut R::Handle<'frame, 'frame>, msg: Trigger<S::Msg>) {
+    pub fn broadcast<'a, 'frame: 'a>(&'frame mut self, render: &'frame mut R::Handle<'frame, 'frame>, msg: Trigger<S::Msg>) {
         let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
         for (sprite, c) in sprites {
             let mut ctx = FrameCtx {
