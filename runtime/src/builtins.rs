@@ -12,15 +12,15 @@ use crate::sprite::{Line, SpriteBase};
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
 pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
 
-pub struct FrameCtx<'a, 'frame: 'a, S: ScratchProgram<R>, R: RenderBackend<S>> {
-    pub sprite: &'a mut SpriteBase,
+pub struct FrameCtx<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> {
+    pub sprite: &'msg mut SpriteBase,
     // pub vars: &'a mut S,
-    pub globals: &'a mut S::Globals,
-    pub(crate) render: &'a mut R::Handle<'frame, 'frame>,
+    pub globals: &'msg mut S::Globals,
+    pub(crate) render: &'msg mut R::Handle<'frame>,
 }
 
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
-impl<'a, 'frame, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'a, 'frame, S, R> {
+impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'msg, 'frame, S, R> {
     pub fn pen_setPenColorToColor(&mut self, colour: f64) {
         self.sprite.pen.colour.0 = colour.max(0.0) as u32;
     }

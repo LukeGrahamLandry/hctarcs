@@ -8,7 +8,7 @@ pub mod softbuffer;
 pub mod notan;
 
 pub trait RenderBackend<S: ScratchProgram<Self>>: Sized {
-    type Handle<'a, 'b: 'a>: RenderHandle;
+    type Handle<'a>: RenderHandle;
 
     /// This function does not return until the program is over.
     fn run();

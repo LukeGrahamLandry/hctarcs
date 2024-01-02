@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::{VecDeque};
 use std::env;
-use std::io::Read;
 
 pub mod sprite;
 pub mod builtins;
@@ -51,12 +50,13 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
 
     // TODO: the compiler knows which messages each type wants to listen to.
     //       it could generate a separate array for each and have no virtual calls or traversing everyone on each message
-    pub fn broadcast<'a, 'frame: 'a>(&'frame mut self, render: &'frame mut R::Handle<'frame, 'frame>, msg: Trigger<S::Msg>) {
+    pub fn broadcast(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
         let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
+        let globals = &mut self.globals;
         for (sprite, c) in sprites {
             let mut ctx = FrameCtx {
                 sprite,
-                globals: &mut self.globals,
+                globals,
                 render,
             };
             c.receive(&mut ctx, msg.clone());
@@ -66,6 +66,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
 
 #[cfg(feature = "fetch-assets")]
 pub fn fetch(md5ext: &str) -> Vec<u8> {
+    use std::io::Read;
     let mut res = ureq::get(&format!("https://scratch.mit.edu/static/assets/{md5ext}"))
         .set("User-Agent", "github/lukegrahamlandry/hctarcs/runtime")
         .call().unwrap().into_reader();

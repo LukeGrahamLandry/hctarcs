@@ -25,7 +25,7 @@ pub struct Handle<'frame> {
 }
 
 impl<S: ScratchProgram<Self>> RenderBackend<S> for BackendImpl<S> {
-    type Handle<'a, 'b: 'a> = Handle<'a>;
+    type Handle<'a> = Handle<'a>;
 
     fn run() {
         notan::init_with(BackendImpl::<S>::init)
