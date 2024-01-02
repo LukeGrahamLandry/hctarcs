@@ -17,13 +17,16 @@ pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Copy;
     type Globals;
 
+    // TODO: I dislike that the compiler needs to put different string here instead of just changing the get_costumes method.
     // Depends on asset loading. Can be static literal if embedded or Vec if fetched at runtime.
     type Bytes: Borrow<[u8]>;
 
     fn create_initial_state() -> (Self::Globals, Vec<Box<dyn Sprite<Self, R>>>);
 
+    // TODO: many of the handy render libraries have some asset loading system, is it worth trying to hook in to that?
     fn get_costumes() -> Vec<Self::Bytes>;
 
+    // TODO: this is going to move to trait Sprite and the ctx method will accept only the resolved id. ImgId wrapper type?
     fn costume_by_name(name: Str) -> Option<usize>;
 }
 
@@ -54,12 +57,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
         let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
         let globals = &mut self.globals;
         for (sprite, c) in sprites {
-            let mut ctx = FrameCtx {
+            c.receive(&mut FrameCtx {
                 sprite,
                 globals,
                 render,
-            };
-            c.receive(&mut ctx, msg.clone());
+            }, msg.clone());
         }
     }
 }

@@ -47,7 +47,6 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         let old = self.pos();
         self.sprite.y = (self.sprite.y + dy).clamp(-HALF_SCREEN_HEIGHT, HALF_SCREEN_HEIGHT);
         self.draw(old);
-        // println!();  // TODO: hack for line break tres
     }
 
     pub fn motion_setx(&mut self, x: f64) {

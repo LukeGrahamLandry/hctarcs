@@ -6,6 +6,8 @@ use crate::{Argb, Line, ScratchProgram};
 pub mod softbuffer;
 #[cfg(feature = "render-notan")]
 pub mod notan;
+#[cfg(feature = "render-macroquad")]
+pub mod macroquad;
 
 pub trait RenderBackend<S: ScratchProgram<Self>>: Sized {
     type Handle<'a>: RenderHandle;

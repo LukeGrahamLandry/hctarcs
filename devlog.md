@@ -1,4 +1,30 @@
 
+
+
+## macroquad backend (Jan 2)
+
+Need a little wrapper of main because they use async next frame for easier wasm but I don't want to impose that on all backends. 
+
+
+TODO: support ios and android, should be easy with some backend. 
+TODO: cli flags to easily build native/wasm/phone. readme note that you don't need to use them
+
+## idea: scratch blocks bijection
+
+Convert to/from the syntax of https://github.com/scratchblocks/scratchblocks  
+There's a converter but only for scratch 2. 
+
+I'd make it a dumb transpiler with a one-to-one correspondence with scratch projects. 
+No interesting optimisation or usability features. 
+
+The motivation for me would be then my web demo could also generate that and use their thing to render it. 
+I don't care about having an editor, but it would be cool to see what's being compiled in a readable form.
+So I guess I don't actually need to parse it, I could just add it as a backend. 
+Would also be cool to add it to [Johan-Mi/sb3-builder](https://github.com/Johan-Mi/sb3-builder) so anything using that could get it for free. 
+Then I could use that and re-output sb3 after ast parsing stage. 
+Which isn't strictly useful, but I find making a full loop appealing as a way to sanity check that I didn't mess something up. 
+Like I should be able to parse and output something that scratch can import, and then you know I didn't lose any information. 
+
 ## idea: canvas? (Jan 1)
 
 ```rust 
@@ -14,7 +40,6 @@ extern "C" {
   pub fn fetch_texture(c: usize, path: *const u8, len: usize) -> usize/* TextureId */;
 }
 ```
-
 
 
 ## including assets (Jan 1)
@@ -33,6 +58,10 @@ of saving all the pen stamps in a list and replaying them. Needs to be the same 
 Logic being sprites are draw in their current position each frame so need to clear the screen but pen persists until explicitly cleared. 
 
 TODO: unrelated, I wonder if scratch-compiler-2 return values support recursive fibonacci
+
+was very distressed that the softbuffer one was calling pen_line but notan one wasn't. 
+was because softbuffer was sending flag event on redraw requested, so it happened twice (init + resize?) 
+so it had to move from end pos to start pos while notan was just doing it once on init. 
 
 ## nicer interface (Dec 31)
 

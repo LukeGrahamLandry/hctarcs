@@ -21,7 +21,7 @@ pub struct State {
 
 pub struct Handle<'frame> {
     state: &'frame mut State,
-    gfx: &'frame mut Graphics
+    _gfx: &'frame mut Graphics
 }
 
 impl<S: ScratchProgram<Self>> RenderBackend<S> for BackendImpl<S> {
@@ -61,20 +61,19 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
 
         let mut handle = Handle {
             state: &mut s.state,
-            gfx,
+            _gfx: gfx,
         };
 
-        // let start = Instant::now();
         s.world.broadcast(&mut handle, Trigger::FlagClicked);
-        // println!("Handled Trigger::FlagClicked in {}ms.", (Instant::now() - start).as_millis());
         s
     }
 
     fn draw(gfx: &mut Graphics, state: &mut Self) {
-        let mut _handle = Handle {
+        let _handle = Handle {
             state: &mut state.state,
-            gfx,
+            _gfx: gfx,
         };
+        // state.world.broadcast(&mut _handle, Trigger::FlagClicked);
 
         // Update the texture with the new data
         gfx.update_texture(&mut state.state.texture)
@@ -84,7 +83,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
 
         let mut draw = gfx.create_draw();
         draw.clear(Color::BLACK);
-        for (x, y, costume) in &state.state.stamps {
+        for (x, y, _costume) in &state.state.stamps {
             let img = &state.state.costumes[1];
             let scale = 0.5; // 100.0 / img.width();
             draw
@@ -121,7 +120,7 @@ impl<'a> RenderHandle for Handle<'a> {
     }
 
     fn pen_line(&mut self, line: crate::Line) {
-        todo!()
+        println!("TODO: pen_line {line:?}")
     }
 
     fn pen_stamp(&mut self, (x, y): (f64, f64), costume: usize) {

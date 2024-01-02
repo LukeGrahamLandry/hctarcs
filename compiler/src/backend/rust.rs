@@ -41,7 +41,7 @@ pub fn emit_rust(project: &Project, backend: Target, assets: AssetPackaging) -> 
         .enumerate().collect();
 
     for (_, c) in &costumes {
-        assert!(["png", "gif"].contains(&&*c.dataFormat), "Unsupported asset format for {:?}", c);
+        assert!(["png", "gif"].contains(&&*c.dataFormat), "TODO: Unsupported asset format for {:?} (expected png or gif)", c);
     }
 
     assert_eq!(assets, AssetPackaging::Embed);

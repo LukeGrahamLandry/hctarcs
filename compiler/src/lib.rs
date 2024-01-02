@@ -1,5 +1,3 @@
-use clap::ValueEnum;
-
 pub mod scratch_schema;
 pub mod ast;
 pub mod parse;
@@ -46,19 +44,22 @@ pub mod wasm_interface {
     }
 }
 
-
-#[cfg_attr(feature = "cli", derive(ValueEnum))]
+// TODO: more thought about how this is implemented.
+//       for ios put it in assets folder instead of binary?
+//       for wasm you might rather always fetch but use the browser api?
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AssetPackaging {
     Embed,
     Fetch,
 }
 
-#[cfg_attr(feature = "cli", derive(ValueEnum))]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Target {
     Notan,
     Softbuffer,
+    Macroquad,
 }
 
 impl Target {
@@ -66,6 +67,7 @@ impl Target {
         match self {
             Target::Notan => "notan",
             Target::Softbuffer => "softbuffer",
+            Target::Macroquad => "macroquad",
         }
     }
 }
