@@ -335,7 +335,8 @@ impl<'src> Parser<'src> {
             }),
             "event_broadcastandwait" => unwrap_input!(block, Input::Broadcast { BROADCAST_INPUT } => {
                 let event = self.parse_t(BROADCAST_INPUT, SType::Str);
-                self.needs_async = true;
+                // TODO: impl this properly
+                // self.needs_async = true;
                 Stmt::BroadcastWait(event)
             }),
             "control_create_clone_of" => unwrap_input!(block, Input::Clone { CLONE_OPTION } => {

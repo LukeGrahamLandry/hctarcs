@@ -183,3 +183,12 @@ int_key!(VarId);
 // int_key!(EventId);
 // int_key!(SpriteId);
 // int_key!(KeyId);
+
+
+impl Sprite {
+    // TODO: hash table
+    pub fn lookup_proc(&self, name: &str) -> Option<&Proc> {
+        self.procedures.iter().find(|p| p.name == name)
+    }
+}
+

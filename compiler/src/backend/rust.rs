@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, format, Formatter};
-use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
+use crate::ast::{BinOp, Expr, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
 use crate::scratch_schema::Block;
@@ -109,7 +109,7 @@ fn format_trigger(project: &Project, value: &Trigger) -> String {
 struct Emit<'src> {
     project: &'src Project,
     target: &'src Sprite,
-    triggers: HashMap<Trigger, String>
+    triggers: HashMap<Trigger, Vec<RustStmt>>
 }
 
 const HEADER: &str = r#"
@@ -151,27 +151,21 @@ impl<'src> Emit<'src> {
         let fields: String = self.target.fields.iter().map(|&v| {
             format!("   {}: {},\n", self.project.var_names[v.0], self.inferred_type_name(v))
         }).collect();
-        let procs: String = self.target.procedures.iter().map(|t| {
-            let args = if t.args.is_empty() {
-                "".to_string()
-            } else {
-                let args: Vec<_> = t.args.iter().map(|&v| {
-                    self.project.var_names[v.0].clone() + ": " + self.inferred_type_name(v)
-                }).collect();
-                format!(", {}", args.join(", "))
-            };
-            format!("fn {}(&mut self, ctx: &mut Ctx{}){{\n{}}}\n\n", t.name, args, self.emit_block(&t.body))
-        }).collect();
+        let procs: String = self.target.procedures.iter().map(|t| self.emit_custom_proc(t)).collect();
         for func in &self.target.functions {
             let body = self.emit_block(&func.body);
-            let handler = match self.triggers.get(&func.start) {
-                Some(prev) => prev.clone() + body.as_str(),
-                None => body
+            // TODO: idk why im in a functional mood rn
+            let handler = match self.triggers.remove(&func.start) {
+                Some(mut prev) => {
+                    prev.push(body);
+                    prev
+                },
+                None => vec![body],
             };
             self.triggers.insert(func.start.clone(), handler);
         }
         let handlers: String = self.triggers.iter().map(|(trigger, body)| {
-            format!("{} => {{{body}}},\n", format_trigger(&self.project, trigger))
+            format!("{} => {{{}}},\n", format_trigger(&self.project, trigger), RustStmt::Block(body.clone()).to_sync().unwrap())
         }).collect();
         // TODO: wrong! defaults are in the json
         format!(r##"
@@ -194,9 +188,32 @@ impl Sprite<Stage, Backend> for {0} {{
 }}"##, self.target.name)
     }
 
+    fn emit_custom_proc(&mut self, t: &'src Proc) -> String{
+        let args = if t.args.is_empty() {
+            "".to_string()
+        } else {
+            let args: Vec<_> = t.args.iter().map(|&v| {
+                self.project.var_names[v.0].clone() + ": " + self.inferred_type_name(v)
+            }).collect();
+            format!(", {}", args.join(", "))
+        };
+        let body = self.emit_block(&t.body);
+        match body.clone().to_sync() {
+            None => {
+                assert!(t.needs_async);
+                // TODO: untested
+                format!("/* TODO: untested*/\nfn {}(&self, {}) -> FnFut<S, R> {{\n{}.done()}}\n\n", t.name, args, body.to_closed_action())
+            },
+            Some(src) => {
+                assert!(!t.needs_async);
+                format!("fn {}(&mut self, ctx: &mut Ctx{}){{\n{src}}}\n\n", t.name, args)
+            }
+        }
+    }
+
     // TODO: Proper indentation
-    fn emit_stmt(&mut self, stmt: &'src Stmt) -> String {
-        match stmt {
+    fn emit_stmt(&mut self, stmt: &'src Stmt) -> RustStmt {
+        RustStmt::sync(match stmt {
             Stmt::BuiltinRuntimeCall(name, args) => {
                 let arg_types: Vec<_> = runtime_prototype(name).unwrap().iter().map(|t| Some(t.clone())).collect();
                 format!("ctx.{}({});\n", name, self.emit_args(args, &arg_types))
@@ -208,26 +225,54 @@ impl Sprite<Stage, Backend> for {0} {{
                 format!("ctx.globals.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
             }
             Stmt::If(cond, body) => {
-                format!("if {} {{\n{} }}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body))
+                format!("if {} {{\n{} }}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body).to_sync().unwrap())
             }
             Stmt::RepeatUntil(cond, body) => { // TODO: is this supposed to be do while?
-                format!("while !({}) {{\n{} }}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body))
+                return RustStmt::Loop {
+                    init: format!(""),
+                    body: vec![
+                        self.emit_block(body)
+                    ],
+                    end_cond: self.emit_expr(cond, Some(SType::Bool)),
+                };
             }
             Stmt::IfElse(cond, body, body2) => {
-                format!("if {} {{\n{} }} else {{\n{}}}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body), self.emit_block(body2))
+                format!("if {} {{\n{} }} else {{\n{}}}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body).to_sync().unwrap(), self.emit_block(body2).to_sync().unwrap())
             }
             Stmt::RepeatTimes(times, body) => {
-                format!("for _ in 0..({} as usize) {{\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.emit_block(body))
+                // format!("for _ in 0..({} as usize) {{\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.emit_block(body).to_sync().unwrap())
+                // There are no real locals so can't have name conflicts
+                return RustStmt::Loop {
+                    init: format!("let mut i = 0usize; let end = {} as usize;", self.emit_expr(times, Some(SType::Number))),
+                    body: vec![
+                        RustStmt::sync(format!("i += 1;")),
+                        self.emit_block(body)
+                    ],
+                    end_cond: rval(SType::Bool, "i >= end"),
+                };
             }
             Stmt::RepeatTimesCapture(times, body, v, s) => {
                 // There are no real locals so can't have name conflicts
                 let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly)).unwrap();
-                let iter_expr = rval(SType::Number, "i as f64".to_string()).coerce(&var_ty);
-                format!("for i in 1..({} as usize + 1) {{\n{} = {iter_expr};\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.ref_var(*s, *v, true), self.emit_block(body))
+                let iter_expr = rval(SType::Number, "i".to_string()).coerce(&var_ty);
+
+                return RustStmt::Loop {
+                    init: format!("let mut i = 1.0f64; let end = {};", self.emit_expr(times, Some(SType::Number))),
+                    body: vec![
+                        RustStmt::sync(format!("{} = {iter_expr}; i += 1.0;", self.ref_var(*s, *v, true))),
+                        self.emit_block(body)
+                    ],
+                    end_cond: rval(SType::Bool, "i > end"),
+                };
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
             Stmt::CallCustom(name, args) => {
-                format!("self.{name}(ctx, {});\n", self.emit_args(args, &self.arg_types(name)))
+                let is_async = self.target.lookup_proc(name).unwrap().needs_async;
+                if is_async {
+                    todo!("async func call")
+                } else {
+                    format!("self.{name}(ctx, {});\n", self.emit_args(args, &self.arg_types(name)))
+                }
             }
             Stmt::ListSet(s, v, i, item) => {
                 let list = self.ref_var(*s, *v, true);
@@ -247,7 +292,7 @@ impl Sprite<Stage, Backend> for {0} {{
             }
             Stmt::Exit => format!("println!(\"stop all\"); std::process::exit(0);\n"),
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
-        }
+        })
     }
 
     fn arg_types(&self, proc_name: &str) -> Vec<Option<SType>> {
@@ -263,8 +308,8 @@ impl Sprite<Stage, Backend> for {0} {{
         args.join(", ")
     }
 
-    fn emit_block(&mut self, args: &'src [Stmt]) -> String {
-        args.iter().map(|s| self.emit_stmt(s)).collect()
+    fn emit_block(&mut self, args: &'src [Stmt]) -> RustStmt {
+        RustStmt::Block(args.iter().map(|s| self.emit_stmt(s)).collect())
     }
 
     // Allocating so many tiny strings but it makes the code look so simple.
@@ -495,41 +540,6 @@ impl Display for RustValue {
         f.write_str(&self.text)
     }
 }
-//
-// impl RustBlock {
-//     fn push_sync(&mut self, stmt: String) {
-//         self.stmts.push(RustStmt::Sync(stmt));
-//     }
-//
-//     fn push_async(&mut self, stmt: RustBlock) {
-//         assert!(self.is_async);
-//         self.stmts.push(RustStmt::Block(stmt));
-//     }
-//
-//     fn close(self) -> String {
-//         let header = if self.is_async {
-//             r#"IoAction::None.then(move |ctx, this| { let this: &mut O = ctx.trusted_cast(this);"#
-//         } else { "{" };
-//         let mut out = String::from(header);
-//
-//         for stmt in self.stmts {
-//             match stmt {
-//                 RustStmt::Sync(s) => out.push_str(&s),
-//                 RustStmt::Block(b) => {
-//                     // TODO: async needs to have an io action somehow
-//                     out.push_str(&b.close())
-//                 }
-//                 RustStmt::IoAction(_) => {}
-//             }
-//         }
-//
-//         let footer = if self.is_async {
-//             r#"})"#
-//         } else { "}" };
-//         out.push_str(footer);
-//         out
-//     }
-// }
 
 #[test]
 fn do_something() {
@@ -551,91 +561,96 @@ fn do_something() {
         RustStmt::IoAction(String::from(r#"IoAction::Ask(String::from("Hello"))"#))
     ]);
 
-    println!("{}", something.to_action());
+    println!("{}", something.to_action()(IoAction(String::from("IoAction::None"), 0)));
 }
 
-// IoAction::None.then(move |ctx, this| {
-//     let this: &mut O = ctx.trusted_cast(this);
-//     // sync work...
-//     IoAction::WaitSecs(1.0).then(move |ctx, this| {
-//         let this: &mut O = ctx.trusted_cast(this);
-//         // sync work...
-//         let mut i = count;
-//         IoAction::None.then_boxed(move |ctx, this| {
-//             let this: &mut O = ctx.trusted_cast(this);
-//             if i == 0 {
-//                 // sync work... (after end of loop)
-//                 IoAction::Ask(String::from("Hello")).done()
-//             } else {
-//                 i -= 1;
-//                 // sync work... (body of loop)
-//                 // Note: instead of LoopYield, it could be IoAction::Call(|ctx| { ... }) if there's an await point in the body.
-//                 IoAction::LoopYield.again()
-//             }
-//         })
-//     })
-// })
-
 // Returns a value of type IoAction
-fn close_stmts(stmts: Vec<RustStmt>) -> String {
-    let actions: Vec<_> = stmts.into_iter().map(RustStmt::to_action).collect();
-    let actions = actions.join(",\n");
-    format!("IoAction::Sequential(vec![\n{actions}\n])")
+fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
+    // TODO: collapse if all are sync
+    let mut action = IoAction(String::from("IoAction::None"), 0);
+    for stmt in collapse_if_sync(stmts).into_iter().rev() {
+        action = stmt.to_action()(action);
+    }
+    action
 }
 
 impl RustStmt {
-    // Returns a value of type IoAction
-    fn to_action(self) -> String {
+    fn sync(src: String) -> Self {
+        RustStmt::Sync(src)
+    }
+
+    // Returns something equivalent to (|rest| IoAction::Seq(self, rest))
+    fn to_action(self) -> impl FnOnce(IoAction) -> IoAction {
+        |IoAction(rest_src, i) |
+            IoAction(match self {
+                RustStmt::Sync(s) => format!("/*{i}*/IoAction::Call(Box::new(move |ctx, this| {{ {s}  \n{rest_src}.done() }}))/*{i}*/"),
+                RustStmt::Block(body) => {
+                    let body = close_stmts(body);
+                    format!("/*{i}*/IoAction::Call(Box::new(move |ctx, this| {{ {body}.then(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
+                },
+                RustStmt::IoAction(a) => format!("/*{i}*/{a}.append({rest_src})/*{i}*/"),
+                RustStmt::Loop { init, body, end_cond } => { // TODO: collapse if body.to_sync().is_some()
+                    let body_action = close_stmts(body);
+                    format!(r#"/*{i}*/IoAction::Call(Box::new(move |ctx, this| {{
+                    {init}
+                    if {end_cond} {{
+                        {rest_src}.done()
+                    }} else {{
+                        {body_action}.again()
+                    }}
+                }})/*{i}*/)"#)
+                },
+            }, i + 1)
+    }
+
+    fn to_closed_action(self) -> IoAction {
+        self.to_action()(IoAction(String::from("IoAction::None"), 0))
+    }
+
+    // TODO: result that returns the original if not?
+    /// None if self contains any await points.
+    fn to_sync(self) -> Option<String> {
+        let sync_block = |stmts: Vec<RustStmt>|
+            if stmts.is_empty() { Some(String::from("")) } else {
+                stmts.into_iter().map(Self::to_sync).reduce(
+                    |a, b| match (a, b) {
+                        (Some(mut a), Some(b)) => {
+                            a.push_str(&b);
+                            Some(a)
+                        },
+                        _ => unreachable!()
+                    }).flatten()
+            };
+
         match self {
-            RustStmt::Sync(s) => format!("IoAction::Call(Box::new(move |ctx, this| {{ {s}  IoAction::None.done() }}))"),
-            RustStmt::Block(body) => close_stmts(body),
-            RustStmt::IoAction(a) => a,
+            RustStmt::Sync(s) => Some(s),
+            RustStmt::Block(stmts) => sync_block(stmts),
+            RustStmt::IoAction(_) => None,
             RustStmt::Loop { init, body, end_cond } => {
-                let body_action = close_stmts(body);
-                format!(r#"IoAction::Call(Box::new(move |ctx, this| {{
-                {init}
-                if {end_cond} {{
-                    IoAction::None.done() 
-                }} else {{
-                    {body_action}.again()
-                }}
-            }}))"#)
-            },
+                match sync_block(body) {
+                    None => None,
+                    Some(body) => Some(format!("{init}\n while !({end_cond}) {{ {body} }}"))
+                }
+            }
         }
     }
 }
 
-// impl RustStmt {
-//     fn close(self) -> String {
-//         match self {
-//             RustStmt::Sync(s) => s,
-//             RustStmt::Block(stmts) => {
-//                 let mut out = String::from("");
-//                 for stmt in stmts {
-//                     match stmt {
-//                         RustStmt::Sync(s) => out.push_str(&s),
-//                         RustStmt::Block(b) => {
-//                             // TODO: async needs to have an io action somehow
-//                             out.push_str(&b.close())
-//                         }
-//                         RustStmt::IoAction(_) => {}
-//                     }
-//                 }
-//                 // TODO: something changes when you hit an io action
-//                 stmts.into_iter().map(RustStmt::close).collect()
-//             }
-//             RustStmt::IoAction(action) => format!( r#"{action}.done()"#)
-//         }
-//     }
-// }
+fn collapse_if_sync(stmts: Vec<RustStmt>) -> Vec<RustStmt> {
+    match RustStmt::Block(stmts.clone()).to_sync() {  // TODO: separate is_sync so dont have to clone
+        None => stmts,  // TODO: can do better, collapse any runs of sync stmts
+        Some(s) => vec![RustStmt::Sync(s)],
+    }
+}
+
+struct IoAction(String, usize);
 
 
-// impl Display for RustBlock {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         f.write_str(&self.text)
-//     }
-// }
-
+impl Display for IoAction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 fn type_name(t: SType) -> &'static str {
     match t {

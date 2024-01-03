@@ -1,10 +1,18 @@
 
-## adding async to the compiler 
+## adding async to the compiler (Jan 3)
 
 before messing with stuff I want to do a bit of cleanup. 
 instead of passing around strings of rust src, always combine with the type since we know when the expression is emitted. 
 
-## thinking about async
+For doing async i want a bit more structure than an emitted block just being an opaque string of src code. 
+Need to know if something is a sync stmt or an IoAction or a FutFn. 
+Sync code is faster so whenever possible want to collapse blocks into one sync block and not have the FutFn closure around it. 
+
+
+The custom functions being sync or async will create similar type checking problem where need to look at everything 
+before you can know what's async because it calls some other async. 
+
+## thinking about async (Jan 2)
 
 i wonder if i could pass around the mutable stuff through the context when polling a future. 
 So i can set it up that i call poll on a future made by the compiler from an async function 
