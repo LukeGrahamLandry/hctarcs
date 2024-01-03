@@ -1,5 +1,18 @@
 
 
+## thinking about async
+
+i wonder if i could pass around the mutable stuff through the context when polling a future. 
+So i can set it up that i call poll on a future made by the compiler from an async function 
+and it passes in a waker thingy that i define but still have the problem 
+that it closes over the mut reference arguments to the function. 
+what i want is to get those from the waker every time i poll the future? 
+im not sure if that makes sense. 
+i can implement poll myself on a struct and in there get interesting info out of my context. 
+
+I was thinking of my own ScratchFn as a trait but really what I'm doing is reimplementing closures. 
+so what if i just emit FnMuts. and then its like old javascript where you just did promises as callbacks. 
+and its like fine because the compiler's generating it so the pain of writing infinitely nested things doesn't matter 
 
 ## macroquad backend (Jan 2)
 

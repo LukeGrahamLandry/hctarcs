@@ -124,6 +124,10 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         println!("[SAY] {msg:?}")
     }
 
+    pub fn control_create_clone_of(&self) {
+        println!("TODO: clone-myself")
+    }
+
     fn pos(&self) -> (f64, f64) {
         (self.sprite.x, self.sprite.y)
     }

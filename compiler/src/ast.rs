@@ -26,6 +26,7 @@ pub struct Sprite {
 pub struct Func {
     pub start: Trigger,
     pub body: Vec<Stmt>,
+    pub needs_async: bool
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,6 +34,7 @@ pub struct Proc {
     pub name: String,
     pub body: Vec<Stmt>,
     pub args: Vec<VarId>,
+    pub needs_async: bool
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -43,7 +45,6 @@ pub struct Node {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Stmt {
     // Control
-    // Repeat(Vec<Stmt>),
     RepeatTimes(Expr, Vec<Stmt>),
     If(Expr, Vec<Stmt>),
     RepeatUntil(Expr, Vec<Stmt>),
@@ -52,6 +53,9 @@ pub enum Stmt {
     StopScript,
     Exit,
     RepeatTimesCapture(Expr, Vec<Stmt>, VarId, Scope),
+
+    CloneMyself,
+    WaitSeconds(Expr),
 
     // Variables
     SetField(VarId, Expr),

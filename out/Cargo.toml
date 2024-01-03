@@ -5,6 +5,7 @@ members = [
     "gen/sanity",
     "gen/mandelbrot",
     "gen/stamp_pos",
+    "gen/async",
 ]
 resolver = "2"
 

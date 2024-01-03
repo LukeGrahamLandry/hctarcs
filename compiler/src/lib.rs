@@ -17,13 +17,13 @@ pub mod wasm_interface {
     pub unsafe extern "C" fn compile_sb3(project_json: *const u8, len: usize) -> *const c_char {
         let s = &*slice_from_raw_parts(project_json, len);
         let project: Project = parse(std::str::from_utf8(s).unwrap()).unwrap().into();
-        let src = emit_rust(&project, Target::Notan, AssetPackaging::Fetch);
+        let src = emit_rust(&project, Target::Macroquad, AssetPackaging::Fetch);
         CString::new(src).unwrap().into_raw()
     }
 
     #[no_mangle]
     pub extern "C" fn get_cargo_toml() -> *const c_char {
-        CString::new(make_cargo_toml(Target::Notan, AssetPackaging::Fetch)).unwrap().into_raw()
+        CString::new(make_cargo_toml(Target::Macroquad, AssetPackaging::Fetch)).unwrap().into_raw()
     }
 
     /// len DOES include null terminator

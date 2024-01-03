@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use macroquad::miniquad::window::request_quit;
 use macroquad::prelude::*;
 use crate::{Argb, HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, Line, RenderBackend, RenderHandle, ScratchProgram, Trigger, World};
-use std::borrow::Borrow;
 use std::ops::{Div, Mul};
 
 pub struct BackendImpl<S: ScratchProgram<Self>>(PhantomData<S>);
@@ -39,7 +38,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
 
         let costumes = S::get_costumes()
             .iter()
-            .map(|bytes| Texture2D::from_file_with_format(bytes.borrow(), None)).collect();
+            .map(|a| a.get(|bytes| Texture2D::from_file_with_format(bytes, None))).collect();
 
         let mut handle = Handle { costumes };
 

@@ -34,6 +34,7 @@ pub fn emit_rust(project: &Project, backend: Target, assets: AssetPackaging) -> 
         format!("\"{}\"=>Msg::{}, \n", project.var_names[name.0].escape_default(), trigger_msg_ident(project, *name))
     }).collect();
 
+    // TODO: move some of costume resolution into parse and dont just pass it through ast
     // TODO: dups? names need to be unique to the spite but make sure not to include same assets twice.
     let costumes: Vec<_> = project.targets
         .iter()
@@ -44,9 +45,9 @@ pub fn emit_rust(project: &Project, backend: Target, assets: AssetPackaging) -> 
         assert!(["png", "gif"].contains(&&*c.dataFormat), "TODO: Unsupported asset format for {:?} (expected png or gif)", c);
     }
 
-    assert_eq!(assets, AssetPackaging::Embed);
+    // assert_eq!(assets, AssetPackaging::Embed);
     let costume_names: String = costumes.iter().map(|(i, c)| format!("\"{}\" => Some({i}),\n", c.name.escape_default())).collect();
-    let costume_includes: String = costumes.iter().map(|(_, c)| format!("include_bytes!(\"assets/{}\"),", c.md5ext)).collect();
+    let costume_includes: String = costumes.iter().map(|(_, c)| format!("ScratchAsset::Embed(include_bytes!(\"assets/{}\")),", c.md5ext)).collect();
 
     let backend_str = backend.code_name();
     format!(r#"
@@ -60,12 +61,11 @@ fn main() {{
 impl ScratchProgram<Backend> for Stage {{
     type Msg = Msg;
     type Globals = Stage;
-    type Bytes = &'static [u8];
     fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
         (Stage::default(), vec![{sprites}])
     }}
 
-    fn get_costumes() -> Vec<Self::Bytes> {{
+    fn get_costumes() -> Vec<ScratchAsset> {{
         vec![{costume_includes}]
     }}
 
@@ -122,8 +122,7 @@ use runtime::builtins::*;
 type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
 "#;
 
-// TODO: enum
-pub fn make_cargo_toml(backend: Target, assets: AssetPackaging) -> String {
+pub fn make_cargo_toml(backend: Target, _assets: AssetPackaging) -> String {
     format!(r#"
 [package]
 name = "scratch_out"

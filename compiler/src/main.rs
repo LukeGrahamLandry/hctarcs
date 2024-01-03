@@ -64,6 +64,7 @@ mod cli {
                 .iter()
                 .flat_map(|t| t.costumes.iter())
                 .for_each(|c| {
+                    // TOOD: instead of unwrap, if its not there somehow try fetching that hash from scratch api? more useful once i support raw project.json without bundled
                     let mut file = zip.by_name(&c.md5ext).unwrap();
                     let mut path = opts.outdir.clone();
                     path.push("src");
@@ -80,7 +81,6 @@ mod cli {
             panic!("Unsupported input. Expected url or local .sb3 file path.");
         };
 
-
         let project: Project = project.into();
         let result = emit_rust(&project, opts.render, opts.assets);
 
@@ -89,6 +89,10 @@ mod cli {
         create_dir_all(&path)?;
         path.push("main.rs");
         fs::write(path, &result)?;
+
+        let mut path = opts.outdir.clone();
+        path.push(".gitignore");
+        fs::write(path, "target\nproject.json\n.DS_Store\n")?;
 
         let cargotoml = match opts.cargotoml {
             None => make_cargo_toml(opts.render, opts.assets).replace("scratch_out", &name),

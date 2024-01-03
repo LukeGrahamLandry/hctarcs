@@ -17,14 +17,10 @@ pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Copy;
     type Globals;
 
-    // TODO: I dislike that the compiler needs to put different string here instead of just changing the get_costumes method.
-    // Depends on asset loading. Can be static literal if embedded or Vec if fetched at runtime.
-    type Bytes: Borrow<[u8]>;
-
     fn create_initial_state() -> (Self::Globals, Vec<Box<dyn Sprite<Self, R>>>);
 
-    // TODO: many of the handy render libraries have some asset loading system, is it worth trying to hook in to that?
-    fn get_costumes() -> Vec<Self::Bytes>;
+    // TODO: make this part of create_initial_state?
+    fn get_costumes() -> Vec<ScratchAsset>;
 
     // TODO: this is going to move to trait Sprite and the ctx method will accept only the resolved id. ImgId wrapper type?
     fn costume_by_name(name: Str) -> Option<usize>;
@@ -66,17 +62,39 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
     }
 }
 
-#[cfg(feature = "fetch-assets")]
-pub fn fetch(md5ext: &str) -> Vec<u8> {
-    use std::io::Read;
-    let mut res = ureq::get(&format!("https://scratch.mit.edu/static/assets/{md5ext}"))
-        .set("User-Agent", "github/lukegrahamlandry/hctarcs/runtime")
-        .call().unwrap().into_reader();
-    let mut buf = Vec::<u8>::new();
-    res.read_to_end(&mut buf).unwrap();
-    buf
+// TODO: many of the handy render libraries have some asset loading system, is it worth trying to hook in to that?
+pub enum ScratchAsset {
+    Embed(&'static [u8]),
+
+    #[cfg(any(feature = "fetch-assets", target_arch = "wasm32"))]
+    FetchUrl(&'static str),
 }
 
+impl ScratchAsset {
+    pub fn get<F: FnOnce(&[u8]) -> R, R>(&self, f: F) -> R {
+        match self {
+            ScratchAsset::Embed(bytes) => f(bytes),
+
+            #[cfg(all(feature = "fetch-assets", not(target_arch = "wasm32")))]
+            ScratchAsset::FetchUrl(url) => {
+                use std::io::Read;
+                let mut res = ureq::get(url)
+                    .set("User-Agent", "github/lukegrahamlandry/hctarcs/runtime")
+                    .call().unwrap().into_reader();
+                let mut buf = Vec::<u8>::new();
+                res.read_to_end(&mut buf).unwrap();
+
+                f(&buf)
+            },
+
+            // TODO: what about wasi?
+            #[cfg(target_arch = "wasm32")]
+            ScratchAsset::FetchUrl(url) => todo!("use browser fetch api?"),
+        }
+    }
+}
+
+// TODO: add project name and author if available
 fn credits() {
     if env::args().len() > 1 {
         println!("{}", CREDITS)

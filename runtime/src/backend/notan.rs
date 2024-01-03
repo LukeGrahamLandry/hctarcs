@@ -4,7 +4,6 @@ use crate::backend::RenderBackend;
 use crate::{Argb, RenderHandle, ScratchProgram, World};
 use crate::builtins::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH};
 use crate::sprite::Trigger;
-use std::borrow::Borrow;
 
 #[derive(AppState)]
 pub struct BackendImpl<S: ScratchProgram<BackendImpl<S>>> {
@@ -52,7 +51,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             .build()
             .unwrap();
 
-        let costumes = S::get_costumes().iter().map(|bytes| gfx.create_texture().from_image(bytes.borrow()).build().unwrap()).collect();
+        let costumes = S::get_costumes().iter().map(|a| a.get(|bytes| gfx.create_texture().from_image(bytes).build().unwrap())).collect();
 
         let mut s = Self {
             state: State { texture, costumes, bytes, stamps: vec![] },

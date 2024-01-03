@@ -33,7 +33,7 @@ impl From<ScratchProject> for Project {
 
         for target in &value.targets {
             let fields = get_vars(&mut proj, target);
-            let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new(), procedures: HashMap::new() }.parse();
+            let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new(), procedures: HashMap::new(), needs_async: false }.parse();
             proj.targets.push(result);
         }
 
@@ -95,6 +95,10 @@ fn post_pass_infer_stmt(project: &mut Project, stmt: Stmt) {
         Stmt::BuiltinRuntimeCall(_, _) => {}
         Stmt::CallCustom(_, _) => {}
         Stmt::StopScript | Stmt::Exit | Stmt::BroadcastWait(_) | Stmt::UnknownOpcode(_) => {}
+        Stmt::CloneMyself => {}
+        Stmt::WaitSeconds(e) => {
+            post_pass_infer_expr(project, e);
+        }
     }
 }
 
@@ -115,6 +119,7 @@ struct Parser<'src> {
     globals: &'src HashMap<String, VarId>,
     args_by_name: HashMap<String, VarId>,
     procedures: HashMap<String, ProcProto<'src>>,
+    needs_async: bool
 }
 
 struct ProcProto<'src> {
@@ -161,7 +166,9 @@ impl<'src> Parser<'src> {
                 name: safe_str(name),
                 body: self.parse_body(proc.block.next.as_deref()),
                 args,
+                needs_async: self.needs_async,
             });
+            self.needs_async = false;
             self.args_by_name.clear();
         }
 
@@ -173,7 +180,9 @@ impl<'src> Parser<'src> {
             functions.push(Func {
                 start,
                 body: self.parse_body(block.next.as_deref()),
+                needs_async: self.needs_async,
             });
+            self.needs_async = false;
         }
 
         Sprite {
@@ -281,7 +290,7 @@ impl<'src> Parser<'src> {
                         self.project.expect_type(id, t.clone());
                     }
                 }
-
+                // TODO: need to know if callee needs_async
                 Stmt::CallCustom(safe_str(proto.name()), args)
             }),
             "data_replaceitemoflist" => unwrap_field!(block, Field::List { LIST } => {
@@ -325,7 +334,21 @@ impl<'src> Parser<'src> {
             }),
             "event_broadcastandwait" => unwrap_input!(block, Input::Broadcast { BROADCAST_INPUT } => {
                 let event = self.parse_t(BROADCAST_INPUT, SType::Str);
+                self.needs_async = true;
                 Stmt::BroadcastWait(event)
+            }),
+            "control_create_clone_of" => unwrap_input!(block, Input::Clone { CLONE_OPTION } => {
+                let value = self.target.blocks.get(CLONE_OPTION.opt_block().unwrap()).unwrap();
+                assert_eq!(value.opcode, "control_create_clone_of_menu");
+                unwrap_field!(value, Field::Clone { CLONE_OPTION } => {
+                    assert_eq!(CLONE_OPTION.unwrap_var(), "_myself_");
+                    self.needs_async = true;
+                    Stmt::CloneMyself
+                })
+            }),
+            "control_wait" => unwrap_input!(block, Input::Time { DURATION } => {
+                let s = self.parse_t(DURATION, SType::Number);
+                Stmt::WaitSeconds(s)
             }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 let args = match proto {
@@ -455,6 +478,7 @@ impl<'src> Parser<'src> {
                         return Expr::Bin(BinOp::Pow, Box::new(Expr::Literal("10".into())), e);
                     }
 
+                    // TODO: make these into unique UnOp varients, clearly its backend dependent
                     let op = match name.as_str() {  // TODO: sad allocation noises
                         "ceiling" => "ceil".to_string(),
                         "log" => "log10".to_string(), // TODO: make sure right base
@@ -506,6 +530,7 @@ impl<'src> Parser<'src> {
                 Expr::Bin(BinOp::StrJoin, Box::new(self.parse_op_expr(STRING1)), Box::new(self.parse_op_expr(STRING2)))
             }),
             "looks_costume" => unwrap_field!(block, Field::Costume { COSTUME } => {
+                // TODO: there should be an SType::Costume so the id lookup can be constant folded
                 Expr::Literal(COSTUME.unwrap_var().to_string())
             }),
             _ => Expr::BuiltinRuntimeGet(block.opcode.clone())  // TODO: should be checked

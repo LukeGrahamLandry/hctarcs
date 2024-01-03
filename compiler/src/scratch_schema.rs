@@ -137,6 +137,12 @@ pub enum Input {
     Costume {
         COSTUME: Operand
     },
+    Clone {
+        CLONE_OPTION: Operand,
+    },
+    Time {
+        DURATION: Operand,
+    },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty
     Named(HashMap<String, Operand>),
@@ -165,6 +171,9 @@ pub enum Field {
     },
     Costume {
         COSTUME: Operand
+    },
+    Clone {
+        CLONE_OPTION: Operand,
     },
     // TODO: How to match empty?
     Named(HashMap<String, Operand>),
