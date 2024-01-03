@@ -12,6 +12,7 @@ pub use sprite::*;
 pub use builtins::*;
 pub use poly::*;
 pub use backend::*;
+use crate::callback::{Action, Callback, IoAction, Script};
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Copy;
@@ -32,7 +33,8 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     bases: VecDeque<SpriteBase>,
     custom: VecDeque<Box<dyn Sprite<S, R>>>,
     globals: S::Globals,
-    _messages: VecDeque<S::Msg>
+    _messages: VecDeque<S::Msg>,
+    scripts: Vec<Script<S, R>>
 }
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
@@ -44,6 +46,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
             custom: custom.into(),
             globals,
             _messages: VecDeque::new(),
+            scripts: vec![],
         }
     }
 
@@ -59,6 +62,65 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
                 render,
             }, msg.clone());
         }
+    }
+
+    // UNUSED thus far
+    // TODO: there would also be a version for broadcast and wait that adds listeners to its personal stack.
+    pub fn broadcast_toplevel_async(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
+        let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
+        let globals = &mut self.globals;
+        for (owner, (sprite, c)) in sprites.enumerate() {
+            let action = Self::stub_async_receive(c, &mut FrameCtx {
+                sprite,
+                globals,
+                render,
+            }, msg.clone());  // TODO: this shouldn't need access to the Ctx
+            self.scripts.push(Script {
+                next: vec![IoAction::Call(action)],
+                owner,
+            });
+        }
+    }
+
+    // UNUSED thus far
+    // TODO: this should not return while executing a custom block with "run without screen refresh"
+    // TODO: compiler warning if you sleep in a "run without screen refresh" block
+    /// Allows each suspended script to run to the next await point if its action has resolved.
+    pub fn poll(&mut self, render: &mut R::Handle<'_>) {
+        let globals = &mut self.globals;
+        self.scripts.retain_mut(|c| {
+            match c.next.pop() {  // Take the next thing from the stack of futures we're waiting on.
+                None => false,  // If its empty, this script is finished.
+                Some(action) => match action {  // Poll the future.
+                    IoAction::Call(mut f) => {  // Call some other async function.
+                        let sprite = &mut self.bases[c.owner];
+                        let ctx = &mut FrameCtx {
+                            sprite,
+                            globals,
+                            render,
+                        };
+
+                        let (action, next) = f(ctx);
+
+                        // Its a stack, so push the next handler and then push the action that must resolve before calling it.
+                        match next {
+                            Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
+                            Callback::Again => c.next.push(IoAction::Call(f)),
+                            Callback::None => {}
+                        }
+                        c.next.push(action);
+                        true
+                    },
+                    IoAction::LoopYield | IoAction::None => true,  // Yields instantly resolve.
+                    _ => todo!(),
+                }
+            }
+        });
+    }
+
+    // UNUSED thus far
+    fn stub_async_receive(s: &mut Box<dyn Sprite<S, R>>, ctx: &mut FrameCtx<S, R>, msg: Trigger<S::Msg>) -> Box<Action<S, R>> {
+        todo!("implement this in the compiler")
     }
 }
 
