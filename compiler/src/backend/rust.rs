@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, format, Formatter};
 use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
+use crate::scratch_schema::Block;
 
 // TODO: it would be more elegant if changing render backend was just a feature flag, not a src change. same for AssetPackaging but thats harder cause it only needs to copy the files there for embed
 // TODO: codegen fetch (its easy)
@@ -420,10 +421,23 @@ impl Sprite<Stage, Backend> for {0} {{
     }
 }
 
+// TODO: this could also track borrow vs owned
 #[derive(Clone, Debug)]
 struct RustValue {
     ty: SType,
     text: String,
+}
+
+#[derive(Clone, Debug)]
+enum RustStmt {
+    Sync(String),
+    Block(Vec<RustStmt>),
+    IoAction(String),
+    Loop {
+        init: String,
+        body: Vec<RustStmt>,
+        end_cond: RustValue,
+    },
 }
 
 impl RustValue {
@@ -481,6 +495,147 @@ impl Display for RustValue {
         f.write_str(&self.text)
     }
 }
+//
+// impl RustBlock {
+//     fn push_sync(&mut self, stmt: String) {
+//         self.stmts.push(RustStmt::Sync(stmt));
+//     }
+//
+//     fn push_async(&mut self, stmt: RustBlock) {
+//         assert!(self.is_async);
+//         self.stmts.push(RustStmt::Block(stmt));
+//     }
+//
+//     fn close(self) -> String {
+//         let header = if self.is_async {
+//             r#"IoAction::None.then(move |ctx, this| { let this: &mut O = ctx.trusted_cast(this);"#
+//         } else { "{" };
+//         let mut out = String::from(header);
+//
+//         for stmt in self.stmts {
+//             match stmt {
+//                 RustStmt::Sync(s) => out.push_str(&s),
+//                 RustStmt::Block(b) => {
+//                     // TODO: async needs to have an io action somehow
+//                     out.push_str(&b.close())
+//                 }
+//                 RustStmt::IoAction(_) => {}
+//             }
+//         }
+//
+//         let footer = if self.is_async {
+//             r#"})"#
+//         } else { "}" };
+//         out.push_str(footer);
+//         out
+//     }
+// }
+
+#[test]
+fn do_something() {
+    let something = RustStmt::Block(vec![
+        RustStmt::Sync(String::from("/* sync work... (first) */")),
+        RustStmt::IoAction(String::from("IoAction::WaitSecs(1.0)")),
+        RustStmt::Sync(String::from("/* sync work... (second) */")),
+        RustStmt::Loop {
+            init: String::from("let mut i = 0;"),
+            body: vec![
+                RustStmt::Sync(String::from("i -= 1;")),
+                RustStmt::Sync(String::from("/* sync work... (body of loop) */")),
+                RustStmt::IoAction(String::from("IoAction::WaitSecs(0.1)")),
+                RustStmt::Sync(String::from("/* sync work... (more body of loop) */")),
+            ],
+            end_cond: RustValue { ty: SType::Bool, text: "i == 0".to_string() },
+        },
+        RustStmt::Sync(String::from("/* sync work... (after end of loop)*/")),
+        RustStmt::IoAction(String::from(r#"IoAction::Ask(String::from("Hello"))"#))
+    ]);
+
+    println!("{}", something.to_action());
+}
+
+// IoAction::None.then(move |ctx, this| {
+//     let this: &mut O = ctx.trusted_cast(this);
+//     // sync work...
+//     IoAction::WaitSecs(1.0).then(move |ctx, this| {
+//         let this: &mut O = ctx.trusted_cast(this);
+//         // sync work...
+//         let mut i = count;
+//         IoAction::None.then_boxed(move |ctx, this| {
+//             let this: &mut O = ctx.trusted_cast(this);
+//             if i == 0 {
+//                 // sync work... (after end of loop)
+//                 IoAction::Ask(String::from("Hello")).done()
+//             } else {
+//                 i -= 1;
+//                 // sync work... (body of loop)
+//                 // Note: instead of LoopYield, it could be IoAction::Call(|ctx| { ... }) if there's an await point in the body.
+//                 IoAction::LoopYield.again()
+//             }
+//         })
+//     })
+// })
+
+// Returns a value of type IoAction
+fn close_stmts(stmts: Vec<RustStmt>) -> String {
+    let actions: Vec<_> = stmts.into_iter().map(RustStmt::to_action).collect();
+    let actions = actions.join(",\n");
+    format!("IoAction::Sequential(vec![\n{actions}\n])")
+}
+
+impl RustStmt {
+    // Returns a value of type IoAction
+    fn to_action(self) -> String {
+        match self {
+            RustStmt::Sync(s) => format!("IoAction::Call(Box::new(move |ctx, this| {{ {s}  IoAction::None.done() }}))"),
+            RustStmt::Block(body) => close_stmts(body),
+            RustStmt::IoAction(a) => a,
+            RustStmt::Loop { init, body, end_cond } => {
+                let body_action = close_stmts(body);
+                format!(r#"IoAction::Call(Box::new(move |ctx, this| {{
+                {init}
+                if {end_cond} {{
+                    IoAction::None.done() 
+                }} else {{
+                    {body_action}.again()
+                }}
+            }}))"#)
+            },
+        }
+    }
+}
+
+// impl RustStmt {
+//     fn close(self) -> String {
+//         match self {
+//             RustStmt::Sync(s) => s,
+//             RustStmt::Block(stmts) => {
+//                 let mut out = String::from("");
+//                 for stmt in stmts {
+//                     match stmt {
+//                         RustStmt::Sync(s) => out.push_str(&s),
+//                         RustStmt::Block(b) => {
+//                             // TODO: async needs to have an io action somehow
+//                             out.push_str(&b.close())
+//                         }
+//                         RustStmt::IoAction(_) => {}
+//                     }
+//                 }
+//                 // TODO: something changes when you hit an io action
+//                 stmts.into_iter().map(RustStmt::close).collect()
+//             }
+//             RustStmt::IoAction(action) => format!( r#"{action}.done()"#)
+//         }
+//     }
+// }
+
+
+// impl Display for RustBlock {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         f.write_str(&self.text)
+//     }
+// }
+
 
 fn type_name(t: SType) -> &'static str {
     match t {

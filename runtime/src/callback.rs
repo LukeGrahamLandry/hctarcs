@@ -20,6 +20,7 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     None,
     Concurrent(Vec<IoAction<S, R>>),
     Sequential(Vec<IoAction<S, R>>),
+    Seq(Box<Self>, Box<Self>)
 }
 
 // This any is very unfortunate
@@ -65,6 +66,15 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
     fn done(self) -> FutOut<S, R> {
         (self, Callback::Done)
     }
+
+    // TODO: you dont want to use these because the allocate a lot
+    fn append(self, other: IoAction<S, R>) -> IoAction<S, R> {
+        IoAction::Seq(Box::new(self), Box::new(other))
+    }
+
+    fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
+        IoAction::Seq(Box::new(self), Box::new(IoAction::Call(Box::new(f))))
+    }
 }
 
 fn do_something<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R>>(count: usize) -> FutOut<S, R> {
@@ -90,4 +100,33 @@ fn do_something<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R>>(coun
             })
         })
     })
+}
+
+fn do_something2<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R>>(count: usize) -> FutOut<S, R> {
+    // Note: can't access the Ctx yet.
+    IoAction::Sequential(vec![
+        IoAction::Call(Box::new(move |ctx, this| { /* sync work... */ IoAction::None.done() })),
+
+    ]).done()
+    // IoAction::None.then(move |ctx, this| {
+    //     let this: &mut O = ctx.trusted_cast(this);
+    //     // sync work...
+    //     IoAction::WaitSecs(1.0).then(move |ctx, this| {
+    //         let this: &mut O = ctx.trusted_cast(this);
+    //         // sync work...
+    //         let mut i = count;
+    //         IoAction::None.then_boxed(move |ctx, this| {
+    //             let this: &mut O = ctx.trusted_cast(this);
+    //             if i == 0 {
+    //                 // sync work... (after end of loop)
+    //                 IoAction::Ask(String::from("Hello")).done()
+    //             } else {
+    //                 i -= 1;
+    //                 // sync work... (body of loop)
+    //                 // Note: instead of LoopYield, it could be IoAction::Call(|ctx| { ... }) if there's an await point in the body.
+    //                 IoAction::LoopYield.again()
+    //             }
+    //         })
+    //     })
+    // })
 }
