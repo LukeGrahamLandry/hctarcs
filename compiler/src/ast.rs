@@ -118,7 +118,8 @@ pub enum BinOp {
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Scope {
     Instance,
-    Global
+    Global,
+    Argument,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -128,7 +129,7 @@ pub enum UnOp {
     SuffixCall(String),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash, Copy)]
 pub enum SType {
     // Integer,
     Number,

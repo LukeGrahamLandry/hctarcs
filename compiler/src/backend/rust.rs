@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 use crate::ast::{BinOp, Expr, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
 
 // TODO: it would be more elegant if changing render backend was just a feature flag, not a src change. same for AssetPackaging but thats harder cause it only needs to copy the files there for embed
-pub fn emit_rust(project: &Project, backend: Target, assets: AssetPackaging) -> String {
+// TODO: codegen fetch (its easy)
+pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) -> String {
     let msgs: HashSet<Trigger> = project.targets.
         iter()
         .flat_map(|target|
@@ -218,8 +220,8 @@ impl Sprite<Stage, Backend> for {0} {{
             }
             Stmt::RepeatTimesCapture(times, body, v, s) => {
                 // There are no real locals so can't have name conflicts
-                let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly));
-                let iter_expr = self.coerce(&SType::Number, "i as f64".to_string(), &var_ty);
+                let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly)).unwrap();
+                let iter_expr = rval(SType::Number, "i as f64".to_string()).coerce(&var_ty);
                 format!("for i in 1..({} as usize + 1) {{\n{} = {iter_expr};\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.ref_var(*s, *v, true), self.emit_block(body))
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
@@ -256,7 +258,7 @@ impl Sprite<Stage, Backend> for {0} {{
     /// Comma seperated
     fn emit_args(&mut self, args: &'src [Expr], arg_types: &[Option<SType>]) -> String {
         // TODO: I shouldn't have to allocate the vec
-        let args = args.iter().zip(arg_types.iter()).map(|(e, t)| self.emit_expr(e, t.clone())).collect::<Vec<_>>();
+        let args = args.iter().zip(arg_types.iter()).map(|(e, t)| self.emit_expr(e, t.clone()).text).collect::<Vec<_>>();
         args.join(", ")
     }
 
@@ -265,25 +267,13 @@ impl Sprite<Stage, Backend> for {0} {{
     }
 
     // Allocating so many tiny strings but it makes the code look so simple.
-    fn emit_expr(&mut self, expr: &'src Expr, t: Option<SType>) -> String {
+    fn emit_expr(&mut self, expr: &'src Expr, t: Option<SType>) -> RustValue {
         let t = t.or(Some(SType::Poly));
-        match expr {
+        // TODO: this match could create a RustValue that then gets coerced again at the end.
+        //       and each branch still has the hint in case it needs to do something with it (empty string)(
+        let value = match expr {
             Expr::Bin(op, rhs, lhs) => {
                 // TODO: clean up `[true/false literal] == [some bool expr]`
-                let infix = match op {
-                    BinOp::Add => Some("+"),
-                    BinOp::Sub => Some("-"),
-                    BinOp::Mul => Some("*"),
-                    BinOp::Div => Some("/"),
-                    // TODO: do scratch and rust agree on mod edge cases (floats and negatives)?
-                    BinOp::Mod => Some("%"),
-                    BinOp::GT => Some(">"),
-                    BinOp::LT => Some("<"),
-                    BinOp::EQ => Some("=="),
-                    BinOp::And => Some("&&"),
-                    BinOp::Or => Some("||"),
-                    _ => None
-                };
                 let arg_t = match op {
                     BinOp::Pow |BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::GT | BinOp::Random | BinOp::LT | BinOp::Mod => Some(SType::Number),
                     BinOp::And | BinOp::Or => Some(SType::Bool),
@@ -295,47 +285,48 @@ impl Sprite<Stage, Backend> for {0} {{
                     BinOp::EQ | BinOp::GT | BinOp::LT | BinOp::And | BinOp::Or => SType::Bool,
                     BinOp::StrJoin => SType::Str,
                 };
-                // TODO: this is icky
+
+                // TODO: this is kinda icky
                 let arg_t = if *op == BinOp::EQ {
                     let rhs_t = infer_type(&self.project, rhs);
                     let lhs_t = infer_type(&self.project, lhs);
-                    let goal = match (lhs_t, rhs_t) {
-                        (None, None) => None, // cool beans
+                    let res = rhs_t.or(lhs_t).unwrap_or(SType::Poly);
+                    match (lhs_t, rhs_t) {
                         (Some(lhs_t), Some(rhs_t)) => {
-                            if lhs_t == rhs_t {
-                                Some(lhs_t)
-                            } else {
-                                match (&lhs_t, &rhs_t) {
-                                    (&SType::Number, &SType::Str) | (&SType::Str, &SType::Number) => Some(SType::Poly),
-                                    (&SType::Poly, _) | (_, &SType::Poly) => Some(SType::Poly),  // TODO: can do better
-                                    _ => panic!("Need rule for {:?} == {:?}", lhs_t, rhs_t)
-                                }
-                            }
+                            if lhs_t == rhs_t { lhs_t } else { SType::Poly}
                         }
-                        (None, Some(rhs_t)) => Some(rhs_t),
-                        (Some(lhs_t), None) => Some(lhs_t),
-                    };
-
-                    goal
+                        _ => res
+                    }
                 } else {
-                    arg_t
+                    arg_t.unwrap()
                 };
 
-                let (a, b) = (self.emit_expr(rhs, arg_t.clone()), self.emit_expr(lhs, arg_t));
-                if let Some(infix) = infix {
-                    return self.coerce(&out_t, format!("({} {} {})", a, infix, b), &t)
-                }
-                if *op == BinOp::Random {
-                    // TODO: optimise if both are constant ints
-                    return self.coerce(&SType::Number, format!("dyn_rand({}, {})", a, b), &t)
-                }
-                if *op == BinOp::Pow {
-                    return self.coerce(&SType::Number, format!("{}.powf({})", a, b), &t)
-                }
-                if *op == BinOp::StrJoin {
-                    return self.coerce(&SType::Str, format!("({}.join({}))", a, b), &t)
-                }
-                format!("todo!(r#\"{:?}\"#)", expr)
+                let (a, b) = (self.emit_expr(rhs, Some(arg_t)), self.emit_expr(lhs, Some(arg_t)));
+
+                let text = match op {
+                    BinOp::Random => format!("dyn_rand({}, {})", a, b),
+                    BinOp::Pow => format!("{}.powf({})", a, b),
+                    BinOp::StrJoin => format!("({}.join({}))", a, b),
+                    _ => {
+                        let infix = match op {
+                            BinOp::Add => "+",
+                            BinOp::Sub => "-",
+                            BinOp::Mul => "*",
+                            BinOp::Div => "/",
+                            // TODO: do scratch and rust agree on mod edge cases (floats and negatives)?
+                            BinOp::Mod => "%",
+                            BinOp::GT => ">",
+                            BinOp::LT => "<",
+                            BinOp::EQ => "==",
+                            BinOp::And => "&&",
+                            BinOp::Or => "||",
+                            _ => unreachable!()
+                        };
+                        format!("({} {} {})", a, infix, b)
+                    }
+                };
+
+                rval(out_t, text)
             },
             Expr::Un(op, e) => {
                 let (found, value) = match op {
@@ -343,24 +334,13 @@ impl Sprite<Stage, Backend> for {0} {{
                     UnOp::SuffixCall(name) => (SType::Number, format!("({}.{name}())", self.emit_expr(e, Some(SType::Number)))),
                     UnOp::StrLen => (SType::Number, format!("{}.len()", self.emit_expr(e, Some(SType::Str)))),
                 };
-                self.coerce(&found, value, &t)
+                rval(found, value)
             }
-            Expr::GetField(v) => {
-                let e = self.ref_var(Scope::Instance, *v, false);
-                self.coerce_var(*v, e, &t)
-            },
-            Expr::GetGlobal(v) => {
-                let e = self.ref_var(Scope::Global, *v, false);
-                self.coerce_var(*v, e, &t)
-
-            },
-            Expr::GetArgument(v) => {
-                let e = self.project.var_names[v.0].clone();
-                self.coerce_var(*v, e, &t)
-            },
+            Expr::GetField(v) => self.emit_var(Scope::Instance, *v),
+            Expr::GetGlobal(v) => self.emit_var(Scope::Global, *v),
+            Expr::GetArgument(v) => self.emit_var(Scope::Argument, *v),
             Expr::IsNum(e) => {
-                let e = self.emit_expr(e, Some(SType::Poly));
-                self.coerce(&SType::Bool, format!("{e}.is_num()"), &t)
+                rval(SType::Bool, format!("{}.is_num()", self.emit_expr(e, Some(SType::Poly))))
             }
             Expr::Literal(s) => {
                 let (value, found) = match s.as_str() {
@@ -376,90 +356,46 @@ impl Sprite<Stage, Backend> for {0} {{
 
                     }  // Brackets because I'm not sure of precedence for negative literals
                 };
-                self.coerce(&found, value, &t)
+                rval(found, value)
             },
             Expr::ListLen(s, v) => {
                 let e = format!("{}.len()", self.ref_var(*s, *v, true));
-                self.coerce(&SType::Number, e, &t)
+                rval(SType::Number, e)
             },
             Expr::ListGet(s, v, i) => {
                 let value = format!("{}[{}]", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number)));
-                self.coerce(&SType::Poly, value, &t)
+                rval(SType::Poly, value)
             },
             Expr::BuiltinRuntimeGet(name) => {
                 let found = infer_type(self.project, expr).unwrap_or_else(|| panic!("Failed to infer return type of BuiltinRuntimeGet {name}"));
-                self.coerce(&found, format!("ctx.{}()", name), &t)
+                rval(found, format!("ctx.{}()", name))
             },
             Expr::StringGetIndex(string, index) => {
                 let value = format!("{}.get_index({})", self.emit_expr(string, Some(SType::Str)), self.emit_expr(index, Some(SType::Number)));
-                self.coerce(&SType::Str, value, &t)
+                rval(SType::Str, value)
             }
-            Expr::Empty => match t {
+            Expr::Empty => rval(t.unwrap(), match t {
                 None | Some(SType::Poly) => "Poly::Empty",
                 Some(SType::Number) => "0.0f64",
                 Some(SType::Str) => "Str::from(\"\")",
                 Some(SType::Bool) => "false",
                 Some(SType::ListPoly) => unreachable!("Null list."),
-            }.to_string(),
-            _ => format!("todo!(r#\"{:?}\"#)", expr)
-        }
+            }.to_string()),
+            _ => rval(t.unwrap(), format!("todo!(r#\"{:?}\"#)", expr))
+        };
+        value.coerce_m(&t)
     }
 
-    fn coerce_var(&self, v: VarId, value: String, want: &Option<SType>) -> String {
+    fn coerce_var(&self, v: VarId, value: String, want: &Option<SType>) -> RustValue {
         let found = self.project.expected_types[v.0].as_ref().unwrap_or(&SType::Poly);
-        self.coerce(found, value, want)
-    }
-
-    fn coerce(&self, found: &SType, value: String, want: &Option<SType>) -> String {
-        let want = want.as_ref().unwrap_or(&SType::Poly);
-        if want == found {
-            return if want == &SType::Poly {
-                // TODO: rethink stuff to avoid redundant clones (im sure rustc would fix but looks ugly).
-                //       but i dont want to actually change behaviour based on hackily analyzing the generated string.
-                //       problem is we dont distinguish between direct var reads and newly computed things
-                // assert!(!value.ends_with(".clone()"));
-                format!("{value}.clone()")
-            } else {
-                value
-            }
-        }
-        if want == &SType::Poly {
-            assert!(!value.starts_with("Poly::from"));
-            return match found {
-                &SType::Number | &SType::Bool => format!("Poly::from({value})"),
-                &SType::Str => format!("Poly::from({value}.clone())"),
-                _ => {
-                    //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
-                    value
-                },
-            };
-        } else if found == &SType::Poly {
-            assert!(!value.ends_with(".as_num()"));
-            assert!(!value.ends_with(".as_str()"));
-            assert!(!value.ends_with(".as_bool()"));
-            return match want {
-                &SType::Number => format!("{value}.as_num()"),
-                &SType::Str => format!("{value}.as_str()"),
-                &SType::Bool => format!("{value}.as_bool()"),
-                _ => {
-                    //println!("WARNING: coerce want {:?} but found {:?} in {value}", want, found);
-                    value
-                }
-            }
-        } else if want == &SType::Str && found == &SType::Number {
-            // TODO: this is only valid in string concat, otherwise probably an inference bug?
-            return format!("Poly::from({value}).as_str()")
-        } else if want == &SType::Number && found == &SType::Str {
-            panic!("Poly::from({value}).as_num()");
-        } else {
-            panic!("coerce want {:?} but found {:?} in {value}", want, found);
-        }
+        rval(*found, value).coerce_m(want)
     }
 
     fn ref_var(&mut self, scope: Scope, v: VarId, place_expr: bool) -> String {
         let value = match scope {
             Scope::Instance => format!("self.{}", self.project.var_names[v.0]),
             Scope::Global => format!("ctx.globals.{}", self.project.var_names[v.0]),
+            Scope::Argument => format!("{}", self.project.var_names[v.0]),
         };
         if place_expr {
             value
@@ -471,11 +407,78 @@ impl Sprite<Stage, Backend> for {0} {{
         }
     }
 
+    fn emit_var(&mut self, scope: Scope, v: VarId) -> RustValue {
+        let ty = self.project.expected_types[v.0].unwrap_or(SType::Poly);
+        rval(ty, self.ref_var(scope, v, false))
+    }
+
     fn inferred_type_name(&self, v: VarId) -> &'static str {
         match &self.project.expected_types[v.0] {
             None => "Poly /* guess */",
             Some(t) => type_name(t.clone()),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RustValue {
+    ty: SType,
+    text: String,
+}
+
+impl RustValue {
+    fn coerce_m(self: RustValue, want: &Option<SType>) -> RustValue {
+        let want = want.as_ref().unwrap_or(&SType::Poly);
+        self.coerce(want)
+    }
+
+    fn coerce(self, want: &SType) -> RustValue {
+        if want == &self.ty {
+            return if want == &SType::Poly {
+                // TODO: rethink stuff to avoid redundant clones (im sure rustc would fix but looks ugly).
+                //       but i dont want to actually change behaviour based on hackily analyzing the generated string.
+                //       problem is we dont distinguish between direct var reads and newly computed things
+                // assert!(!value.ends_with(".clone()"));
+                rval(*want, format!("{}.clone()", self.text))
+            } else {
+                self
+            }
+        }
+        if want == &SType::Poly {
+            assert!(!self.text.starts_with("Poly::from"));
+            return rval(*want, match &self.ty {
+                &SType::Number | &SType::Bool => format!("Poly::from({})", self.text),
+                &SType::Str => format!("Poly::from({}.clone())", self.text),
+                _ => return self,
+            });
+        } else if self.ty == SType::Poly {
+            assert!(!self.text.ends_with(".as_num()"));
+            assert!(!self.text.ends_with(".as_str()"));
+            assert!(!self.text.ends_with(".as_bool()"));
+            return rval(*want, match want {
+                &SType::Number => format!("{}.as_num()", self.text),
+                &SType::Str => format!("{}.as_str()", self.text),
+                &SType::Bool => format!("{}.as_bool()", self.text),
+                _ => return self,
+            })
+        } else if want == &SType::Str && &self.ty == &SType::Number {
+            // TODO: this is only valid in string concat, otherwise probably an inference bug?
+            return rval(*want, format!("Poly::from({}).as_str()", self.text))
+        } else if want == &SType::Number && &self.ty == &SType::Str {
+            panic!("Poly::from({self:?}).as_num()");
+        } else {
+            panic!("coerce want {:?} but found {self:?}", want);
+        }
+    }
+}
+
+fn rval(ty: SType, text: impl ToString) -> RustValue {
+    RustValue { ty, text: text.to_string() }
+}
+
+impl Display for RustValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text)
     }
 }
 

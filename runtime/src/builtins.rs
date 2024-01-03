@@ -1,12 +1,13 @@
 #![allow(non_snake_case)]  // TODO: compiler could fix the names for me
 
+use std::any::Any;
 use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
 use std::io::{stdout, Write};
 use crate::backend::RenderBackend;
 use crate::poly::Str;
-use crate::{RenderHandle, ScratchProgram};
+use crate::{RenderHandle, ScratchProgram, Sprite};
 use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
@@ -21,6 +22,15 @@ pub struct FrameCtx<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S
 
 // TODO: think about some macro magic to generate the prototypes in the compiler based on these functions.
 impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'msg, 'frame, S, R> {
+    // TODO: check if using downcast_mut_unchecked is faster (it still asserts in debug builds)
+    // TODO: why can you only call downcast_mut on dyn Any not dyn <some trait: Any>. https://github.com/rust-lang/rust/issues/65991
+    // The existence of this is unfortunate.
+    // This should ONLY be called by the compiler!
+    // Being a method on the Ctx gives opportunity to add more precise satisfy checks later (ex. same instance uid as expected).
+    pub fn trusted_cast<'a, O: Sprite<S, R>>(&self, sprite: &'a mut dyn Any) -> &'a mut O {
+        sprite.downcast_mut().unwrap()
+    }
+
     pub fn pen_setPenColorToColor(&mut self, colour: f64) {
         self.sprite.pen.colour.0 = colour.max(0.0) as u32;
     }

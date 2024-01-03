@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::{VecDeque};
 use std::env;
 
@@ -12,7 +11,7 @@ pub use sprite::*;
 pub use builtins::*;
 pub use poly::*;
 pub use backend::*;
-use crate::callback::{Action, Callback, IoAction, Script};
+use crate::callback::{FnFut, Callback, IoAction, Script};
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Copy;
@@ -37,7 +36,8 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     scripts: Vec<Script<S, R>>
 }
 
-impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
+// I dare you to fix the 'static
+impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
     pub fn new() -> Self {
         let (globals, custom) = S::create_initial_state();
         credits();
@@ -94,19 +94,20 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
                 Some(action) => match action {  // Poll the future.
                     IoAction::Call(mut f) => {  // Call some other async function.
                         let sprite = &mut self.bases[c.owner];
+                        let custom = &mut self.custom[c.owner];
                         let ctx = &mut FrameCtx {
                             sprite,
                             globals,
                             render,
                         };
 
-                        let (action, next) = f(ctx);
+                        let (action, next) = f(ctx, custom);
 
                         // Its a stack, so push the next handler and then push the action that must resolve before calling it.
                         match next {
                             Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
                             Callback::Again => c.next.push(IoAction::Call(f)),
-                            Callback::None => {}
+                            Callback::Done => {}
                         }
                         c.next.push(action);
                         true
@@ -119,7 +120,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> World<S, R> {
     }
 
     // UNUSED thus far
-    fn stub_async_receive(s: &mut Box<dyn Sprite<S, R>>, ctx: &mut FrameCtx<S, R>, msg: Trigger<S::Msg>) -> Box<Action<S, R>> {
+    fn stub_async_receive(_s: &mut Box<dyn Sprite<S, R>>, _ctx: &mut FrameCtx<S, R>, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
         todo!("implement this in the compiler")
     }
 }

@@ -244,7 +244,8 @@ impl<'src> Parser<'src> {
                 //println!("Set {:?} = {:?}", v, value);
                 match scope {
                     Scope::Instance => Stmt::SetField(v, value),
-                    Scope::Global => Stmt::SetGlobal(v, value)
+                    Scope::Global => Stmt::SetGlobal(v, value),
+                    Scope::Argument => unreachable!(),
                 }
             }),
             "data_changevariableby" => unwrap_field!(block, Field::Var { VARIABLE } => {  // TODO: this could have a new ast node and use prettier +=
@@ -569,13 +570,12 @@ impl<'src> Parser<'src> {
 }
 
 fn validate(target: &RawSprite) {
-    // TODO: confused by costumes
-    // assert!(target.blocks.values().all(|v| {
-    //     match &v.fields {
-    //         Some(Field::Named(m)) => m.is_empty(),
-    //         _ => true
-    //     }
-    // }));
+    assert!(target.blocks.values().all(|v| {
+        match &v.fields {
+            Some(Field::Named(m)) => m.is_empty(),
+            _ => true
+        }
+    }));
 }
 
 /// These correspond to function definitions in the runtime. The argument types must match!

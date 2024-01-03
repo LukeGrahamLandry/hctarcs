@@ -1,4 +1,8 @@
 
+## adding async to the compiler 
+
+before messing with stuff I want to do a bit of cleanup. 
+instead of passing around strings of rust src, always combine with the type since we know when the expression is emitted. 
 
 ## thinking about async
 
@@ -12,7 +16,10 @@ i can implement poll myself on a struct and in there get interesting info out of
 
 I was thinking of my own ScratchFn as a trait but really what I'm doing is reimplementing closures. 
 so what if i just emit FnMuts. and then its like old javascript where you just did promises as callbacks. 
-and its like fine because the compiler's generating it so the pain of writing infinitely nested things doesn't matter 
+and its like fine because the compiler's generating it so the pain of writing infinitely nested things doesn't matter .
+
+I guess the downside of using closures instead of generating the struct myself is each await point is its own Box, 
+but most of them don't capture anything (only loops close over their counter) so most don't actually allocate. 
 
 ## macroquad backend (Jan 2)
 

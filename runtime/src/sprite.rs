@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 use crate::backend::RenderBackend;
 use crate::builtins::FrameCtx;
@@ -43,7 +44,7 @@ pub enum Trigger<Msg> {
     Message(Msg),
 }
 
-pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug {
+pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
     fn receive(&mut self, ctx: &mut FrameCtx<S, R>, msg: Trigger<S::Msg>);
 
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.

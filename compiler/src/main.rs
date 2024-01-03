@@ -10,11 +10,11 @@ fn main() {
 #[cfg(feature = "cli")]
 mod cli {
     use std::fs;
-    use std::fs::{create_dir_all, File};
+    use std::fs::create_dir_all;
     use std::io::{Cursor, Read, read_to_string};
     use std::path::PathBuf;
     use std::process::Command;
-    use clap::{Parser, ValueEnum};
+    use clap::Parser;
     use serde::Deserialize;
     use zip::ZipArchive;
     use compiler::{AssetPackaging, Target};
