@@ -17,6 +17,16 @@ Using `this: &mut Self` instead of `&mut Self` in sync fns means I don't need to
 The async ones have it passed in and self is a magic keyword you cant assign to. 
 wierd that that's different, cant call like method if first param is your type instead of magic self, need to assign in body like in async fns which looks a bit silly. 
 
+Was planning on having the ScratchProject register as either sync or async 
+and then only impl that method on sprites and world has to comptime switch and call the right one. 
+But that seems like silly extra work because sync projects are an edge case (non-interactive) 
+and the overhead of a single async dispatch wrapping all your sync code is negligible. 
+Still want the user code to not have to write async fns if all are sync. 
+
+Trying to have default trait method forward async messages to the sync future. 
+The trait (or method) can't require Sized because the whole point is to use trait objects.
+So then the Self is ?Sized. 
+But I don't understand why all the methods in Any require Sized. 
 why might vtable kinds not match?
 ```rust
 // misleading name
@@ -33,6 +43,28 @@ pub fn trusted_cast<'a, O: Sprite<S, R> + ?Sized>(&self, sprite: &'a mut dyn Any
     }
 }
 ```
+I must have some dumb misinterpretation?  
+it works if you wrap it, so you can require Sized and then have the compiler generate the impl with one fn call. 
+```rust
+pub fn forward_to_sync<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R> + Sized>(msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
+    Box::new(move |ctx, this| {
+        let this: &mut O = ctx.trusted_cast(this);
+        this.receive(ctx, msg);
+        IoAction::None.done()
+    })
+}
+```
+
+Struggle with typeid not matching and can't figure out how to get a meaningful type_name out of it. 
+Maybe you can't without comptime knowing the type cause then it would need to include metadata for literally everything. 
+Trying to call it on `&mut self.custom[c.owner]` but that's a `&mut Box<dyn Sprite>` so it the Any is the box, 
+need to call it on `&mut *self.custom[c.owner]`. Only works using nightly compiler for trait_upcasting. 
+I don't want to make everything in the world an Any cause then idk how you'd call things. 
+
+Need to figure out how to poll stdin without blocking. Do I really need to spawn a new thread? 
+I did it for my asm snake a while ago but that also involved turning on raw mode for game input so maybe won't work without that, i dont remember. 
+
+It's funny how deranged-ly commented the code is when I'm less confident in what im doing. 
 
 ## thinking about async (Jan 2)
 

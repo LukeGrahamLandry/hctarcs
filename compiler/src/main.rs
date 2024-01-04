@@ -128,11 +128,14 @@ mod cli {
             }
         }
 
-        if opts.run || opts.debug {
+        if opts.run || opts.debug || opts.first_frame_only{
             let mut cmd = Command::new("cargo");
             cmd.arg("run");
             if !opts.debug {
                 cmd.arg("--release");
+            }
+            if opts.first_frame_only {
+                cmd.arg("--").arg("--first-frame-only");
             }
             assert!(cmd.current_dir(&opts.outdir).status()?.success());
         }
@@ -195,7 +198,11 @@ mod cli {
         assets: AssetPackaging,
 
         #[arg(long)]
-        wasm: bool
+        wasm: bool,
+
+        /// Run for one frame, save a screenshot, and then exit (same as building normally then passing --first-frame-only to the exe)
+        #[arg(long)]
+        first_frame_only: bool
     }
 
     #[derive(Deserialize)]

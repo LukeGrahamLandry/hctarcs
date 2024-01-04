@@ -2,7 +2,7 @@ use std::any::Any;
 use std::fmt::Debug;
 use crate::backend::RenderBackend;
 use crate::builtins::FrameCtx;
-use crate::callback::{Callback, FnFut, FutOut, IoAction};
+use crate::callback::FnFut;
 use crate::ScratchProgram;
 
 #[derive(Clone, Default, Debug)]

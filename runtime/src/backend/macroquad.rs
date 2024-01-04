@@ -1,3 +1,4 @@
+use std::env;
 use std::marker::PhantomData;
 use macroquad::miniquad::window::request_quit;
 use macroquad::prelude::*;
@@ -42,6 +43,12 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
 
         let mut handle = Handle { costumes };
         world.broadcast_toplevel_async(Trigger::FlagClicked);
+
+        // TODO: move logic out of backend.
+        // TODO: sad allocation noises. I guess you can't slice an OsStr (cstr?)?
+        // TODO: sad that i check this every frame
+        let take_screenshot = env::args().any(|arg| &arg == "--first-frame-only");
+
         loop {
             // All the draw commands during an event are to the static pen texture.
             set_camera(&pen_camera);
@@ -58,6 +65,14 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             if is_key_down(KeyCode::Escape) {
                 request_quit();
             }
+            if take_screenshot {
+                let img = get_screen_data();
+                img.export_png("frame.png");
+                println!("Exiting. Saved first frame at {}/frame.png", env::current_dir().unwrap().to_string_lossy());
+                // TODO: this waits a frame
+                request_quit();
+            }
+
             next_frame().await;
         }
     }

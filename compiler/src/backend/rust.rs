@@ -216,8 +216,9 @@ impl Sprite<Stage, Backend> for {0} {{
         }
     }
 
-    // TODO: Proper indentation
+    // Don't care about generating indentation, just run cargo fmt.
     fn emit_stmt(&mut self, stmt: &'src Stmt) -> RustStmt {
+        // Implicit return a string of sync code if more complex, use explicit return from the match.
         RustStmt::sync(match stmt {
             Stmt::BuiltinRuntimeCall(name, args) => {
                 let arg_types: Vec<_> = runtime_prototype(name).unwrap().iter().map(|t| Some(t.clone())).collect();
@@ -297,6 +298,9 @@ impl Sprite<Stage, Backend> for {0} {{
                 format!("this.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
             }
             Stmt::Exit => format!("println!(\"stop all\"); std::process::exit(0);\n"),
+            Stmt::WaitSeconds(seconds) => {
+                return RustStmt::IoAction(format!("IoAction::sleep({})", self.emit_expr(seconds, Some(SType::Number))))
+            }
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         })
     }
@@ -438,11 +442,6 @@ impl Sprite<Stage, Backend> for {0} {{
         value.coerce_m(&t)
     }
 
-    fn coerce_var(&self, v: VarId, value: String, want: &Option<SType>) -> RustValue {
-        let found = self.project.expected_types[v.0].as_ref().unwrap_or(&SType::Poly);
-        rval(*found, value).coerce_m(want)
-    }
-
     fn ref_var(&mut self, scope: Scope, v: VarId, place_expr: bool) -> String {
         let value = match scope {
             Scope::Instance => format!("this.{}", self.project.var_names[v.0]),
@@ -548,29 +547,29 @@ impl Display for RustValue {
         f.write_str(&self.text)
     }
 }
-
-#[test]
-fn do_something() {
-    let something = RustStmt::Block(vec![
-        RustStmt::Sync(String::from("/* sync work... (first) */")),
-        RustStmt::IoAction(String::from("IoAction::WaitSecs(1.0)")),
-        RustStmt::Sync(String::from("/* sync work... (second) */")),
-        RustStmt::Loop {
-            init: String::from("let mut i = 0;"),
-            body: vec![
-                RustStmt::Sync(String::from("i -= 1;")),
-                RustStmt::Sync(String::from("/* sync work... (body of loop) */")),
-                RustStmt::IoAction(String::from("IoAction::WaitSecs(0.1)")),
-                RustStmt::Sync(String::from("/* sync work... (more body of loop) */")),
-            ],
-            end_cond: RustValue { ty: SType::Bool, text: "i == 0".to_string() },
-        },
-        RustStmt::Sync(String::from("/* sync work... (after end of loop)*/")),
-        RustStmt::IoAction(String::from(r#"IoAction::Ask(String::from("Hello"))"#))
-    ]);
-
-    println!("{}", something.to_action()(IoAction(String::from("IoAction::None"), 0)));
-}
+//
+// #[test]
+// fn do_something() {
+//     let something = RustStmt::Block(vec![
+//         RustStmt::Sync(String::from("/* sync work... (first) */")),
+//         RustStmt::IoAction(String::from("IoAction::WaitSecs(1.0)")),
+//         RustStmt::Sync(String::from("/* sync work... (second) */")),
+//         RustStmt::Loop {
+//             init: String::from("let mut i = 0;"),
+//             body: vec![
+//                 RustStmt::Sync(String::from("i -= 1;")),
+//                 RustStmt::Sync(String::from("/* sync work... (body of loop) */")),
+//                 RustStmt::IoAction(String::from("IoAction::WaitSecs(0.1)")),
+//                 RustStmt::Sync(String::from("/* sync work... (more body of loop) */")),
+//             ],
+//             end_cond: RustValue { ty: SType::Bool, text: "i == 0".to_string() },
+//         },
+//         RustStmt::Sync(String::from("/* sync work... (after end of loop)*/")),
+//         RustStmt::IoAction(String::from(r#"IoAction::Ask(String::from("Hello"))"#))
+//     ]);
+//
+//     println!("{}", something.to_action()(IoAction(String::from("IoAction::None"), 0)));
+// }
 
 // Returns a value of type IoAction
 fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {

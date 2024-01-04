@@ -21,6 +21,8 @@ test: target/sanity.sb3 target/mandelbrot.sb3 target/stamp_pos.sb3
 	./target/debug/compiler -i target/tres.sb3 -o out/gen/tres --check
 	./target/debug/compiler -i target/stamp_pos.sb3 -o out/gen/stamp_pos --check --deny-poly --deny-async
 	./target/debug/compiler -i target/sanity.sb3 -o out/gen/sanity --debug --deny-async
+	cargo test --package compiler first_images -- --exact
+# TODO: cargo test will replace the above
 
 mandelbrot: target/mandelbrot/project.json
 	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --deny-poly --run

@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = ["profiling"]
 render-softbuffer = ["dep:softbuffer", "dep:winit"]
 render-notan = ["dep:notan", "dep:image"]
 render-macroquad = ["dep:macroquad", "dep:image"]
 fetch-assets = ["dep:ureq"]
+profiling = []
 
 [dependencies]
 rand = "0.8.5"

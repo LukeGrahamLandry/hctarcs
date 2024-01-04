@@ -13,6 +13,8 @@ use crate::sprite::{Line, SpriteBase};
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
 pub const HALF_SCREEN_HEIGHT: f64 = 180.0;
 
+
+// Note: each instance is linked to a specific sprite.
 pub struct FrameCtx<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> {
     pub sprite: &'msg mut SpriteBase,
     // pub vars: &'a mut S,

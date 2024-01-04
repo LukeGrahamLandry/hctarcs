@@ -1,18 +1,24 @@
 //! DIY shitty async runtime.
 //! The idea is each stack of blocks will be split into many functions, each ending in an await point.
-//! UNUSED thus far
 #![allow(unused)]
 use std::any::Any;
 use std::collections::VecDeque;
 use std::hint::black_box;
 use std::mem::{size_of, size_of_val};
+use std::ops::Add;
 use std::pin::{Pin, pin};
+use std::time::{Duration, Instant};
 use crate::{credits, FrameCtx, RenderBackend, ScratchProgram, Trigger, World};
 use crate::sprite::{Sprite, SpriteBase};
 
+// TODO: try to clean up the concurrency model. Relationship between IoAction, FnFut, and FutOut feels a bit over complicated.
 pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
-    WaitSecs(f64),
-    Ask(String),
+    WaitUntil(Instant),
+    // TODO: compiler doesnt emit these, it calls the context method.
+    // TODO: its awkward that I have this fusion between requests and waiting for requests
+    /// https://en.scratch-wiki.info/wiki/Ask_()_and_Wait_(block)
+    Ask(String),  // Tell the event loop to request user input. Replaced with WaitForAsk(_).
+    WaitForAsk(usize),  // Suspend until the input request with id _ is fulfilled.
     BroadcastWait(S::Msg),
     Call(Box<FnFut<S, R>>),
     CloneMyself,
@@ -20,7 +26,6 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     None,
     Concurrent(Vec<IoAction<S, R>>),
     Sequential(Vec<IoAction<S, R>>),
-    Seq(Box<Self>, Box<Self>)
 }
 
 // This any is very unfortunate
@@ -56,6 +61,14 @@ pub const fn assert_nonzero_sized<T>(){
 }
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
+    pub fn sleep(seconds: f64) -> Self {
+        if seconds > 0.0 {
+            IoAction::WaitUntil(Instant::now().add(Duration::from_secs(seconds as u64)))
+        } else {  // TODO: does scratch yield for sleep(0)?
+            IoAction::None
+        }
+    }
+
     // TODO: hefty type signature
     pub fn then<F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
         assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
@@ -75,12 +88,13 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
     }
 
     // TODO: you dont want to use these because the allocate a lot
+    // (IoAction is never zero sized so boxing trick doesn't help)
     pub fn append(self, other: IoAction<S, R>) -> IoAction<S, R> {
-        IoAction::Seq(Box::new(self), Box::new(other))
+        IoAction::Sequential(vec![self, other])
     }
 
     pub  fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
-        IoAction::Seq(Box::new(self), Box::new(IoAction::Call(Box::new(f))))
+        IoAction::Sequential(vec![self, IoAction::Call(Box::new(f))])
     }
 }
 
@@ -92,56 +106,3 @@ pub fn forward_to_sync<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R
     })
 }
 
-fn do_something<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R>>(count: usize) -> FutOut<S, R> {
-    // Note: can't access the Ctx yet.
-    IoAction::None.then(move |ctx, this| {
-        let this: &mut O = ctx.trusted_cast(this);
-        // sync work...
-        IoAction::WaitSecs(1.0).then(move |ctx, this| {
-            let this: &mut O = ctx.trusted_cast(this);
-            // sync work...
-            let mut i = count;
-            IoAction::None.then_boxed(move |ctx, this| {
-                let this: &mut O = ctx.trusted_cast(this);
-                if i == 0 {
-                    // sync work... (after end of loop)
-                    IoAction::Ask(String::from("Hello")).done()
-                } else {
-                    i -= 1;
-                    // sync work... (body of loop)
-                    // Note: instead of LoopYield, it could be IoAction::Call(|ctx| { ... }) if there's an await point in the body.
-                    IoAction::LoopYield.again()
-                }
-            })
-        })
-    })
-}
-
-fn do_something2<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R>>(count: usize) -> FutOut<S, R> {
-    // Note: can't access the Ctx yet.
-    IoAction::Sequential(vec![
-        IoAction::Call(Box::new(move |ctx, this| { /* sync work... */ IoAction::None.done() })),
-
-    ]).done()
-    // IoAction::None.then(move |ctx, this| {
-    //     let this: &mut O = ctx.trusted_cast(this);
-    //     // sync work...
-    //     IoAction::WaitSecs(1.0).then(move |ctx, this| {
-    //         let this: &mut O = ctx.trusted_cast(this);
-    //         // sync work...
-    //         let mut i = count;
-    //         IoAction::None.then_boxed(move |ctx, this| {
-    //             let this: &mut O = ctx.trusted_cast(this);
-    //             if i == 0 {
-    //                 // sync work... (after end of loop)
-    //                 IoAction::Ask(String::from("Hello")).done()
-    //             } else {
-    //                 i -= 1;
-    //                 // sync work... (body of loop)
-    //                 // Note: instead of LoopYield, it could be IoAction::Call(|ctx| { ... }) if there's an await point in the body.
-    //                 IoAction::LoopYield.again()
-    //             }
-    //         })
-    //     })
-    // })
-}

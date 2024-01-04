@@ -1,6 +1,5 @@
 #![feature(trait_upcasting)]  // unfortunate that i need nightly
 
-use std::any::Any;
 use std::collections::{VecDeque};
 use std::env;
 use std::mem::size_of;
@@ -40,9 +39,13 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     custom: VecDeque<Box<dyn Sprite<S, R>>>,
     globals: S::Globals,
     _messages: VecDeque<S::Msg>,
-    scripts: Vec<Script<S, R>>
+    scripts: Vec<Script<S, R>>,
+    last_ask_id: usize,  // TODO: non-blocking input that increments this
+    pub profile_fut_count: usize,
 }
 
+// TODO: make the rendering backend generic over the async backend so you could drop in replace a real async runtime?
+// TODO: async is wip. needs massive cleanup.
 // I dare you to fix the 'static
 impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
     pub fn new() -> Self {
@@ -54,6 +57,8 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             globals,
             _messages: VecDeque::new(),
             scripts: vec![],
+            last_ask_id: 0,
+            profile_fut_count: 0,
         }
     }
 
@@ -106,31 +111,46 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
     pub fn poll_turbo(&mut self, render: &mut R::Handle<'_>) {
         if self.scripts.is_empty() { return; }  // fast path for sync or finished programs
 
+        // TODO: tune this number. i guess need to leave some time in the frame for rendering?
+        // TODO: I really have no sense of scale of how much work you're supposed to do in a frame
         let stop_time = Instant::now().add(Duration::from_millis(16));
 
         loop {
             let mut progress = true;
+            // TODO: tune this number
             for _ in 0..100 {  // I want to check the time less often
                 progress = self.poll(render);
                 if !progress {
                     break
                 }
             }
-            if !progress || Instant::now() > stop_time {
+            if (!progress) || (Instant::now() > stop_time) {
                 break
             }
         }
+
+        // TODO: dont print every frame
+        #[cfg(feature = "profiling")]
+        println!("Futures handled: {}", self.profile_fut_count);
     }
 
+    // TODO: all this async stuff should really go in callback cause that's kinda empty. maybe rename that world and try to get to mostly empty lib file.
     // TODO: this should not return while executing a custom block with "run without screen refresh"
     // TODO: compiler warning if you sleep in a "run without screen refresh" block
+    // This is the big sexy switch statement at the heart of the universe.
+    // TODO: should try to break these up into methods but can't borrow self
     /// Allows each suspended script to run to the next await point if its action has resolved.
     pub fn poll(&mut self, render: &mut R::Handle<'_>) -> bool {
         if self.scripts.is_empty() { return false; }  // fast path for sync or finished programs
         let mut made_progress = false;  // Set to true if every script was just waiting on io/timer
-        let globals = &mut self.globals;
+
         self.scripts.retain_mut(|c| {
-            loop {
+            // (break) to retain and yield the script until next poll.
+            // (continue) when future resolved and want to pop the next immediately.
+            loop {  // TODO: replace the body of the loop with a method returning enum[made_progress, return] (true, false)=ScriptFinished   (true, false)=ProgressYield   (false, true)=WaitingYield (false, false)=unreachable
+                #[cfg(feature = "profiling")]
+                { self.profile_fut_count += 1; }
+
                 match c.next.pop() {  // Take the next thing from the stack of futures we're waiting on.
                     None => {  // If its empty, this script is finished.
                         made_progress = true;
@@ -143,7 +163,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             let custom: &mut dyn Sprite<S, R> = &mut *self.custom[c.owner];  // This is what needs trait_upcasting
                             let ctx = &mut FrameCtx {
                                 sprite,
-                                globals,
+                                globals: &mut self.globals,
                                 render,
                             };
 
@@ -157,25 +177,73 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             }
                             c.next.push(action);
                             made_progress = true;
-                            return /*from closure*/ true
+                            break
                         },
-                        // TODO: maybe None should pop and try again instead of waiting a frame
+
+                        // TODO: this might be waiting two frames since fn return already yields so maybe should be treated as IoAction::None
                         IoAction::LoopYield => { // Yields instantly resolve
                             made_progress = true;
-                            return /*from closure*/ true  // But there could be more in the script's stack.
+                            break  // But there could be more in the script's stack.
                         },
                         // TODO: ideally the compiler wouldn't ever emit these since they dont do anything.
-                        IoAction::None => {  // Instantly resolve + dont wait a frame before popping again
+                        IoAction::None => {
                             made_progress = true;
+                            continue
+                        }
+                        // TODO: could the compiler do these without allocating the vec since im just appending to one I already have anyway? maybe have a method on the Ctx to push actions?
+                        IoAction::Sequential(actions) => {
+                            c.next.extend(actions.into_iter().rev());  // Reverse for because c.next is a stack
+                            made_progress = true;
+                            continue
+                        }
+                        IoAction::WaitUntil(time) => {
+                            if Instant::now() < time {  // Still waiting, no progress
+                                c.next.push(IoAction::WaitUntil(time));
+                                break
+                            } else {
+                                made_progress = true;
+                                continue
+                            }
+                        }
+                        IoAction::Ask(question) => {
+                            made_progress = true;
+                            // TODO: what if another script is already waiting on an ask?
+                            println!("ASK: {question}");
+                            c.next.push(IoAction::WaitForAsk(self.last_ask_id + 1));
+                            break
+                        }
+                        IoAction::WaitForAsk(id) => {
+                            if self.last_ask_id < id {  // Not done yet, no progress
+                                println!("TODO: WaitForAsk will never resolve. implement stdin polling");
+                                c.next.push(IoAction::WaitForAsk(id));
+                                break
+                            } else {
+                                made_progress = true;
+                                continue
+                            }
                         }
                         _ => todo!(),
                     }
                 }
+
+                #[allow(unreachable_code)]
+                { unreachable!("end of loop. use explicit continue cause im afraid of forgetting") }
             }
+
+            return /*from closure*/  true
         });
 
         made_progress
     }
+}
+
+// TODO: UNUSED thus far
+#[allow(dead_code)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum PollState {
+    Waiting,
+    Finished,
+    Working,
 }
 
 // TODO: many of the handy render libraries have some asset loading system, is it worth trying to hook in to that?
@@ -212,7 +280,7 @@ impl ScratchAsset {
 
 // TODO: add project name and author if available
 fn credits() {
-    if env::args().len() > 1 {
+    if env::args().any(|arg| &arg == "--credits") {
         println!("{}", CREDITS)
     }
 }
