@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]  // TODO: compiler could fix the names for me
 
-use std::any::Any;
+use std::any::{Any};
 use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;

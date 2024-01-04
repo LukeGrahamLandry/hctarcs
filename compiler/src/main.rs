@@ -82,6 +82,10 @@ mod cli {
         };
 
         let project: Project = project.into();
+
+        if opts.deny_async {
+            assert!(!project.any_async, "Made async calls but --deny-async");
+        }
         let result = emit_rust(&project, opts.render, opts.assets);
 
         let mut path = opts.outdir.clone();
@@ -101,6 +105,11 @@ mod cli {
         let mut path = opts.outdir.clone();
         path.push("Cargo.toml");
         fs::write(path, cargotoml)?;
+
+        // TODO: output this in the web demo too
+        let mut path = opts.outdir.clone();
+        path.push("rust-toolchain.toml");
+        fs::write(path, "[toolchain]\nchannel = \"nightly\"")?;
 
         // println!("[INFO] {} Polymorphic Type Annotations", result.matches(": Poly").count());
         // println!("[INFO] {} Polymorphic Constructor Calls", result.matches("Poly::from").count());
@@ -129,7 +138,7 @@ mod cli {
         }
 
         if opts.deny_poly {
-            assert_eq!(result.matches("Poly").count(), 0, "Failed to infer all types.");
+            assert_eq!(result.matches("Poly").count(), 0, "Failed to infer all types but --deny-poly");
         }
 
         Ok(())
@@ -173,6 +182,10 @@ mod cli {
         /// Assert that no polymorphic types were used in the program. Used for testing. Should probably be moved to a script.
         #[arg(long)]
         deny_poly: bool,
+
+        /// Assert that no async calls were used in the program. Used for testing. Should probably be moved to a script.
+        #[arg(long)]
+        deny_async: bool,
 
         /// What to use as the User-Agent http header when the compiler calls the scratch api.
         #[arg(long, default_value = "github/LukeGrahamLandry/hctarcs")]

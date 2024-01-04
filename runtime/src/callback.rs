@@ -42,39 +42,54 @@ pub enum Callback<S: ScratchProgram<R>, R: RenderBackend<S>> {
     Done,
 }
 
-const fn assert_zero_sized<T>(){
+// TODO: this is unnecessary but makes me feel better
+pub const fn assert_zero_sized<T>(){
     if size_of::<T>() != 0 {  // assert_eq isn't const
         panic!("Expected zero-sized.");
     }
 }
 
+pub const fn assert_nonzero_sized<T>(){
+    if size_of::<T>() == 0 {  // assert_ne isn't const
+        panic!("Expected non-zero-sized.");
+    }
+}
+
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
     // TODO: hefty type signature
-    fn then<F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
+    pub fn then<F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
         assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
         (self, Callback::Then(Box::new(f)))
     }
 
-    fn then_boxed(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> FutOut<S, R> {
+    pub fn then_boxed(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> FutOut<S, R> {
         (self, Callback::Then(Box::new(f)))
     }
 
-    fn again(self) -> FutOut<S, R> {
+    pub fn again(self) -> FutOut<S, R> {
         (self, Callback::Again)
     }
 
-    fn done(self) -> FutOut<S, R> {
+    pub fn done(self) -> FutOut<S, R> {
         (self, Callback::Done)
     }
 
     // TODO: you dont want to use these because the allocate a lot
-    fn append(self, other: IoAction<S, R>) -> IoAction<S, R> {
+    pub fn append(self, other: IoAction<S, R>) -> IoAction<S, R> {
         IoAction::Seq(Box::new(self), Box::new(other))
     }
 
-    fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
+    pub  fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
         IoAction::Seq(Box::new(self), Box::new(IoAction::Call(Box::new(f))))
     }
+}
+
+pub fn forward_to_sync<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R> + Sized>(msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
+    Box::new(move |ctx, this| {
+        let this: &mut O = ctx.trusted_cast(this);
+        this.receive(ctx, msg);
+        IoAction::None.done()
+    })
 }
 
 fn do_something<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R>>(count: usize) -> FutOut<S, R> {

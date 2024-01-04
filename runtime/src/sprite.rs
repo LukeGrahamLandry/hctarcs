@@ -2,6 +2,7 @@ use std::any::Any;
 use std::fmt::Debug;
 use crate::backend::RenderBackend;
 use crate::builtins::FrameCtx;
+use crate::callback::{Callback, FnFut, FutOut, IoAction};
 use crate::ScratchProgram;
 
 #[derive(Clone, Default, Debug)]
@@ -45,7 +46,16 @@ pub enum Trigger<Msg> {
 }
 
 pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
-    fn receive(&mut self, ctx: &mut FrameCtx<S, R>, msg: Trigger<S::Msg>);
+    // Sync projects must override this one.
+    fn receive(&mut self, _ctx: &mut FrameCtx<S, R>, _msg: Trigger<S::Msg>) {
+
+    }
+
+    // Async projects must override this one.
+    fn receive_async(&self, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
+        // TODO: can't do a default impl that forwards to receive because of confusing Any/dyn/?Sized things
+        unreachable!("Compiler must impl receive_async->forward_to_sync")
+    }
 
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.
     // You can't just impl here and have where Self: Clone cause you can't call it on the trait object.

@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = [  # TODO: figure out how to fix this so i can cargo clean && make test
     "gen/linrays",
     "gen/tres",
     "gen/sanity",

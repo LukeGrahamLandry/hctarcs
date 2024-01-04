@@ -41,13 +41,13 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             .map(|a| a.get(|bytes| Texture2D::from_file_with_format(bytes, None))).collect();
 
         let mut handle = Handle { costumes };
-
-        // All the draw commands during an event are to the static pen texture.
-        set_camera(&pen_camera);
-        world.broadcast(&mut handle, Trigger::FlagClicked);
-        set_default_camera();
-
+        world.broadcast_toplevel_async(Trigger::FlagClicked);
         loop {
+            // All the draw commands during an event are to the static pen texture.
+            set_camera(&pen_camera);
+            world.poll_turbo(&mut handle);
+            set_default_camera();
+
             clear_background(WHITE);
             draw_texture(&pen.texture,0.0, 0.0, WHITE);
             for sprite in &world.bases {

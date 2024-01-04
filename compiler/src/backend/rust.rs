@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, format, Formatter};
+use std::fmt::{Display, Formatter};
 use crate::ast::{BinOp, Expr, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
-use crate::scratch_schema::Block;
 
 // TODO: it would be more elegant if changing render backend was just a feature flag, not a src change. same for AssetPackaging but thats harder cause it only needs to copy the files there for embed
 // TODO: codegen fetch (its easy)
@@ -52,6 +51,7 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
     let costume_names: String = costumes.iter().map(|(i, c)| format!("\"{}\" => Some({i}),\n", c.name.escape_default())).collect();
     let costume_includes: String = costumes.iter().map(|(_, c)| format!("ScratchAsset::Embed(include_bytes!(\"assets/{}\")),", c.md5ext)).collect();
 
+    let async_type_marker = if project.any_async { "usize" } else { "()" };
     let backend_str = backend.code_name();
     format!(r#"
 {HEADER}
@@ -64,6 +64,8 @@ fn main() {{
 impl ScratchProgram<Backend> for Stage {{
     type Msg = Msg;
     type Globals = Stage;
+    // HACK
+    type UnitIfNoAsync = {async_type_marker};
     fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
         (Stage::default(), vec![{sprites}])
     }}
@@ -177,11 +179,14 @@ impl {0} {{
 }}
 impl Sprite<Stage, Backend> for {0} {{
     fn receive(&mut self, ctx: &mut Ctx, msg: Trigger<Msg>) {{
+        let this = self;
         match msg {{
             {handlers}
             _ => {{}}  // Ignored.
         }}
     }}
+
+    fn receive_async(&self, msg: Trigger<Msg>) -> Box<FnFut<Stage, Backend>> {{ forward_to_sync::<Stage, Backend, Self>(msg) }}
 
     // Grumble grumble object safety...
     fn clone_boxed(&self) -> Box<dyn Sprite<Stage, Backend>> {{ Box::new(self.clone()) }}
@@ -206,7 +211,7 @@ impl Sprite<Stage, Backend> for {0} {{
             },
             Some(src) => {
                 assert!(!t.needs_async);
-                format!("fn {}(&mut self, ctx: &mut Ctx{}){{\n{src}}}\n\n", t.name, args)
+                format!("fn {}(&mut self, ctx: &mut Ctx{}){{\nlet this = self;\n{src}}}\n\n", t.name, args)
             }
         }
     }
@@ -219,7 +224,7 @@ impl Sprite<Stage, Backend> for {0} {{
                 format!("ctx.{}({});\n", name, self.emit_args(args, &arg_types))
             },
             Stmt::SetField(v, e) => {
-                format!("self.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
+                format!("this.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
             }
             Stmt::SetGlobal(v, e) => {
                 format!("ctx.globals.{} = {};\n", self.project.var_names[v.0], self.emit_expr(e, self.project.expected_types[v.0].clone()))
@@ -237,12 +242,12 @@ impl Sprite<Stage, Backend> for {0} {{
                 };
             }
             Stmt::IfElse(cond, body, body2) => {
+                // TODO: add a RustStmt::IfElse so dont have to force sync yet
                 format!("if {} {{\n{} }} else {{\n{}}}\n", self.emit_expr(cond, Some(SType::Bool)), self.emit_block(body).to_sync().unwrap(), self.emit_block(body2).to_sync().unwrap())
             }
             Stmt::RepeatTimes(times, body) => {
-                // format!("for _ in 0..({} as usize) {{\n{}}}\n", self.emit_expr(times, Some(SType::Number)), self.emit_block(body).to_sync().unwrap())
                 // There are no real locals so can't have name conflicts
-                return RustStmt::Loop {
+                return RustStmt::Loop {  // TODO: check edge cases of the as usize in scratch
                     init: format!("let mut i = 0usize; let end = {} as usize;", self.emit_expr(times, Some(SType::Number))),
                     body: vec![
                         RustStmt::sync(format!("i += 1;")),
@@ -257,7 +262,7 @@ impl Sprite<Stage, Backend> for {0} {{
                 let iter_expr = rval(SType::Number, "i".to_string()).coerce(&var_ty);
 
                 return RustStmt::Loop {
-                    init: format!("let mut i = 1.0f64; let end = {};", self.emit_expr(times, Some(SType::Number))),
+                    init: format!("let mut i = 1.0f64; let end: f64 = {};", self.emit_expr(times, Some(SType::Number))),
                     body: vec![
                         RustStmt::sync(format!("{} = {iter_expr}; i += 1.0;", self.ref_var(*s, *v, true))),
                         self.emit_block(body)
@@ -265,13 +270,14 @@ impl Sprite<Stage, Backend> for {0} {{
                     end_cond: rval(SType::Bool, "i > end"),
                 };
             }
-            Stmt::StopScript => "return;\n".to_string(),  // TODO: is this supposed to go all the way up the stack?
+            Stmt::StopScript => "return;\n".to_string(),  // TODO: how does this interact with async
             Stmt::CallCustom(name, args) => {
                 let is_async = self.target.lookup_proc(name).unwrap().needs_async;
-                if is_async {
-                    todo!("async func call")
+                let callexpr = format!("this.{name}(ctx, {})", self.emit_args(args, &self.arg_types(name)));
+                if is_async {  // TODO: untested
+                    return RustStmt::IoAction(format!("/*untested*/{CALL_ACTION}{callexpr}))"));
                 } else {
-                    format!("self.{name}(ctx, {});\n", self.emit_args(args, &self.arg_types(name)))
+                    format!("{callexpr}; /*nosuspend*/\n")
                 }
             }
             Stmt::ListSet(s, v, i, item) => {
@@ -288,7 +294,7 @@ impl Sprite<Stage, Backend> for {0} {{
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
                 // TODO: multiple receivers HACK
                 assert!(self.target.is_singleton);
-                format!("self.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
+                format!("this.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
             }
             Stmt::Exit => format!("println!(\"stop all\"); std::process::exit(0);\n"),
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
@@ -439,7 +445,7 @@ impl Sprite<Stage, Backend> for {0} {{
 
     fn ref_var(&mut self, scope: Scope, v: VarId, place_expr: bool) -> String {
         let value = match scope {
-            Scope::Instance => format!("self.{}", self.project.var_names[v.0]),
+            Scope::Instance => format!("this.{}", self.project.var_names[v.0]),
             Scope::Global => format!("ctx.globals.{}", self.project.var_names[v.0]),
             Scope::Argument => format!("{}", self.project.var_names[v.0]),
         };
@@ -465,6 +471,8 @@ impl Sprite<Stage, Backend> for {0} {{
         }
     }
 }
+
+const CALL_ACTION: &str = "IoAction::Call(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this);\n";
 
 // TODO: this could also track borrow vs owned
 #[derive(Clone, Debug)]
@@ -583,15 +591,15 @@ impl RustStmt {
     fn to_action(self) -> impl FnOnce(IoAction) -> IoAction {
         |IoAction(rest_src, i) |
             IoAction(match self {
-                RustStmt::Sync(s) => format!("/*{i}*/IoAction::Call(Box::new(move |ctx, this| {{ {s}  \n{rest_src}.done() }}))/*{i}*/"),
+                RustStmt::Sync(s) => format!("/*{i}*/{CALL_ACTION}{s}  \n{rest_src}.done() }}))/*{i}*/"),
                 RustStmt::Block(body) => {
                     let body = close_stmts(body);
-                    format!("/*{i}*/IoAction::Call(Box::new(move |ctx, this| {{ {body}.then(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
+                    format!("/*{i}*/{CALL_ACTION}{body}.then(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
                 },
                 RustStmt::IoAction(a) => format!("/*{i}*/{a}.append({rest_src})/*{i}*/"),
                 RustStmt::Loop { init, body, end_cond } => { // TODO: collapse if body.to_sync().is_some()
                     let body_action = close_stmts(body);
-                    format!(r#"/*{i}*/IoAction::Call(Box::new(move |ctx, this| {{
+                    format!(r#"/*{i}*/{CALL_ACTION}
                     {init}
                     if {end_cond} {{
                         {rest_src}.done()

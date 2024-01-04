@@ -1,16 +1,38 @@
 
 ## adding async to the compiler (Jan 3)
 
+Note: everywhere here `async` refers to my shitty runtime not the normal rust futures system. 
+
 before messing with stuff I want to do a bit of cleanup. 
 instead of passing around strings of rust src, always combine with the type since we know when the expression is emitted. 
 
 For doing async i want a bit more structure than an emitted block just being an opaque string of src code. 
 Need to know if something is a sync stmt or an IoAction or a FutFn. 
-Sync code is faster so whenever possible want to collapse blocks into one sync block and not have the FutFn closure around it. 
-
+Sync code is faster so whenever possible want to collapse blocks into one sync block and not have the FutFn closure around it.
 
 The custom functions being sync or async will create similar type checking problem where need to look at everything 
 before you can know what's async because it calls some other async. 
+
+Using `this: &mut Self` instead of `&mut Self` in sync fns means I don't need to switch between self and this based on fn colour when generating code. 
+The async ones have it passed in and self is a magic keyword you cant assign to. 
+wierd that that's different, cant call like method if first param is your type instead of magic self, need to assign in body like in async fns which looks a bit silly. 
+
+why might vtable kinds not match?
+```rust
+// misleading name
+fn is_any_unsized<T: Any + ?Sized>(this: &mut dyn Any) -> bool {
+    let t = TypeId::of::<T>();
+    let concrete = this.type_id();
+    t == concrete
+}
+pub fn trusted_cast<'a, O: Sprite<S, R> + ?Sized>(&self, sprite: &'a mut dyn Any) -> &'a mut O {
+    if is_any_unsized::<O>(sprite) {
+        unsafe { &mut *(sprite as *mut dyn Any as *mut O) }
+    } else {
+        panic!()
+    }
+}
+```
 
 ## thinking about async (Jan 2)
 

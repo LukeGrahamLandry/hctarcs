@@ -57,22 +57,16 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             state: State { texture, costumes, bytes, stamps: vec![] },
             world: World::new(),
         };
-
-        let mut handle = Handle {
-            state: &mut s.state,
-            _gfx: gfx,
-        };
-
-        s.world.broadcast(&mut handle, Trigger::FlagClicked);
+        s.world.broadcast_toplevel_async(Trigger::FlagClicked);
         s
     }
 
     fn draw(gfx: &mut Graphics, state: &mut Self) {
-        let _handle = Handle {
+        let mut handle = Handle {
             state: &mut state.state,
             _gfx: gfx,
         };
-        // state.world.broadcast(&mut _handle, Trigger::FlagClicked);
+        state.world.poll_turbo(&mut handle);
 
         // Update the texture with the new data
         // TODO: have a dirty flag so dont do this on frames that didn't use the pen

@@ -1,5 +1,11 @@
+#![feature(trait_upcasting)]  // unfortunate that i need nightly
+
+use std::any::Any;
 use std::collections::{VecDeque};
 use std::env;
+use std::mem::size_of;
+use std::ops::Add;
+use std::time::{Duration, Instant};
 
 pub mod sprite;
 pub mod builtins;
@@ -11,11 +17,12 @@ pub use sprite::*;
 pub use builtins::*;
 pub use poly::*;
 pub use backend::*;
-use crate::callback::{FnFut, Callback, IoAction, Script};
+pub use callback::*;
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
-    type Msg: Copy;
+    type Msg: Copy + 'static;
     type Globals;
+    type UnitIfNoAsync;  // TODO: use const generics?  // TODO: remove if im just forwarding anyway
 
     fn create_initial_state() -> (Self::Globals, Vec<Box<dyn Sprite<Self, R>>>);
 
@@ -50,9 +57,18 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         }
     }
 
+    pub fn broadcast(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
+        if size_of::<S::UnitIfNoAsync>() == 0 {
+            self.broadcast_sync(render, msg);
+        } else {
+            self.broadcast_toplevel_async(msg);
+        }
+    }
+
     // TODO: the compiler knows which messages each type wants to listen to.
     //       it could generate a separate array for each and have no virtual calls or traversing everyone on each message
-    pub fn broadcast(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
+    pub fn broadcast_sync(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
+        assert_zero_sized::<S::UnitIfNoAsync>();
         let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
         let globals = &mut self.globals;
         for (sprite, c) in sprites {
@@ -64,17 +80,10 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         }
     }
 
-    // UNUSED thus far
     // TODO: there would also be a version for broadcast and wait that adds listeners to its personal stack.
-    pub fn broadcast_toplevel_async(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
-        let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
-        let globals = &mut self.globals;
-        for (owner, (sprite, c)) in sprites.enumerate() {
-            let action = Self::stub_async_receive(c, &mut FrameCtx {
-                sprite,
-                globals,
-                render,
-            }, msg.clone());  // TODO: this shouldn't need access to the Ctx
+    pub fn broadcast_toplevel_async(&mut self, msg: Trigger<S::Msg>) {
+        for (owner, c) in self.custom.iter().enumerate() {
+            let action = c.receive_async(msg);
             self.scripts.push(Script {
                 next: vec![IoAction::Call(action)],
                 owner,
@@ -82,46 +91,90 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         }
     }
 
-    // UNUSED thus far
+    // TODO: remove cause this is almost never what you want
+    /// Hang the thread until all scripts are finished OR waiting on timers.
+    /// This is kinda like "Run without screen refresh" (but for everything, not just some custom blocks) and skipping timers.
+    /// This will hang forever if the program has an infinite loop.
+    pub fn poll_until_waiting(&mut self, render: &mut R::Handle<'_>) {
+        while self.poll(render) {
+            // Spin
+        }
+    }
+
+    // TODO: this is unfortunate: i imagine getting the time is slow as fuck. can i have like waker thingy in another thread?
+    /// Polls as many times as possible within one frame or until all scripts are waiting on timers.
+    pub fn poll_turbo(&mut self, render: &mut R::Handle<'_>) {
+        if self.scripts.is_empty() { return; }  // fast path for sync or finished programs
+
+        let stop_time = Instant::now().add(Duration::from_millis(16));
+
+        loop {
+            let mut progress = true;
+            for _ in 0..100 {  // I want to check the time less often
+                progress = self.poll(render);
+                if !progress {
+                    break
+                }
+            }
+            if !progress || Instant::now() > stop_time {
+                break
+            }
+        }
+    }
+
     // TODO: this should not return while executing a custom block with "run without screen refresh"
     // TODO: compiler warning if you sleep in a "run without screen refresh" block
     /// Allows each suspended script to run to the next await point if its action has resolved.
-    pub fn poll(&mut self, render: &mut R::Handle<'_>) {
+    pub fn poll(&mut self, render: &mut R::Handle<'_>) -> bool {
+        if self.scripts.is_empty() { return false; }  // fast path for sync or finished programs
+        let mut made_progress = false;  // Set to true if every script was just waiting on io/timer
         let globals = &mut self.globals;
         self.scripts.retain_mut(|c| {
-            match c.next.pop() {  // Take the next thing from the stack of futures we're waiting on.
-                None => false,  // If its empty, this script is finished.
-                Some(action) => match action {  // Poll the future.
-                    IoAction::Call(mut f) => {  // Call some other async function.
-                        let sprite = &mut self.bases[c.owner];
-                        let custom = &mut self.custom[c.owner];
-                        let ctx = &mut FrameCtx {
-                            sprite,
-                            globals,
-                            render,
-                        };
-
-                        let (action, next) = f(ctx, custom);
-
-                        // Its a stack, so push the next handler and then push the action that must resolve before calling it.
-                        match next {
-                            Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
-                            Callback::Again => c.next.push(IoAction::Call(f)),
-                            Callback::Done => {}
-                        }
-                        c.next.push(action);
-                        true
+            loop {
+                match c.next.pop() {  // Take the next thing from the stack of futures we're waiting on.
+                    None => {  // If its empty, this script is finished.
+                        made_progress = true;
+                        return /*from closure*/ false
                     },
-                    IoAction::LoopYield | IoAction::None => true,  // Yields instantly resolve.
-                    _ => todo!(),
+                    Some(action) => match action {  // Poll the future.
+                        IoAction::Call(mut f) => {  // Call some other async function.
+                            let sprite = &mut self.bases[c.owner];
+                            // Note the deref! I want to type erase the contents of the box not the box itself.
+                            let custom: &mut dyn Sprite<S, R> = &mut *self.custom[c.owner];  // This is what needs trait_upcasting
+                            let ctx = &mut FrameCtx {
+                                sprite,
+                                globals,
+                                render,
+                            };
+
+                            let (action, next) = f(ctx, custom);
+
+                            // Its a stack, so push the next handler and then push the action that must resolve before calling it.
+                            match next {
+                                Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
+                                Callback::Again => c.next.push(IoAction::Call(f)),
+                                Callback::Done => {}
+                            }
+                            c.next.push(action);
+                            made_progress = true;
+                            return /*from closure*/ true
+                        },
+                        // TODO: maybe None should pop and try again instead of waiting a frame
+                        IoAction::LoopYield => { // Yields instantly resolve
+                            made_progress = true;
+                            return /*from closure*/ true  // But there could be more in the script's stack.
+                        },
+                        // TODO: ideally the compiler wouldn't ever emit these since they dont do anything.
+                        IoAction::None => {  // Instantly resolve + dont wait a frame before popping again
+                            made_progress = true;
+                        }
+                        _ => todo!(),
+                    }
                 }
             }
         });
-    }
 
-    // UNUSED thus far
-    fn stub_async_receive(_s: &mut Box<dyn Sprite<S, R>>, _ctx: &mut FrameCtx<S, R>, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
-        todo!("implement this in the compiler")
+        made_progress
     }
 }
 

@@ -16,11 +16,11 @@ web_dist: web
 # Make sure NOT to do the thing where you only rebuild if the source changed because im testing the compiler not the json blob.
 test: target/sanity.sb3 target/mandelbrot.sb3 target/stamp_pos.sb3
 	cargo build --bin compiler
-	./target/debug/compiler -i target/mandelbrot.sb3 -o out/gen/mandelbrot --check --deny-poly
-	./target/debug/compiler -i target/linrays.sb3 -o out/gen/linrays --check --deny-poly
+	./target/debug/compiler -i target/mandelbrot.sb3 -o out/gen/mandelbrot --check --deny-poly --deny-async
+	./target/debug/compiler -i target/linrays.sb3 -o out/gen/linrays --check --deny-poly --deny-async
 	./target/debug/compiler -i target/tres.sb3 -o out/gen/tres --check
-	./target/debug/compiler -i target/stamp_pos.sb3 -o out/gen/stamp_pos --check --deny-poly
-	./target/debug/compiler -i target/sanity.sb3 -o out/gen/sanity --debug
+	./target/debug/compiler -i target/stamp_pos.sb3 -o out/gen/stamp_pos --check --deny-poly --deny-async
+	./target/debug/compiler -i target/sanity.sb3 -o out/gen/sanity --debug --deny-async
 
 mandelbrot: target/mandelbrot/project.json
 	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --deny-poly --run
@@ -32,7 +32,7 @@ linrays:
 	cargo run --bin compiler -- -i target/linrays.sb3 -o out/gen/linrays --run
 
 stamp_pos: target/stamp_pos.sb3
-	cargo run --bin compiler -- -i target/stamp_pos.sb3 -o out/gen/stamp_pos --run
+	cargo run --bin compiler -- -i target/stamp_pos.sb3 -o out/gen/stamp_pos --debug
 
 # Note: scratch-compiler needs you in the right current directory to find asset files (and scratch needs you to have a texture even if you're just using the pen).
 target/sanity.sb3: tests/sanity.scratch

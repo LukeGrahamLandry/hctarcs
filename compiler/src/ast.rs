@@ -8,6 +8,7 @@ pub struct Project {
     pub var_names: Vec<String>,
     pub expected_types: Vec<Option<SType>>,
     pub triggers_by_name: HashMap<String, VarId>,
+    pub any_async: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -18,7 +19,8 @@ pub struct Sprite {
     pub name: String,
     pub is_stage: bool,
     pub is_singleton: bool,
-    pub costumes: Vec<Costume>
+    pub costumes: Vec<Costume>,
+    pub any_async: bool,
 }
 
 /// A stack of scratch blocks with a trigger

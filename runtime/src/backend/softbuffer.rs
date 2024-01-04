@@ -39,13 +39,21 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
             )
             .unwrap();
 
-        event_loop.set_control_flow(ControlFlow::Wait);  // Poll
+        world.broadcast_toplevel_async(Trigger::FlagClicked);
+        let mut handle = Handle { buffer: surface.buffer_mut().unwrap() };
+        world.poll_until_waiting(&mut handle);
+        handle.buffer.present().unwrap();
+
+        event_loop.set_control_flow(ControlFlow::Wait);  // TODO: Poll?
+
         event_loop.run(|event, elwt| {
             match event {
                 Event::WindowEvent { event: WindowEvent::RedrawRequested, .. } => {
-                    let mut handle = Handle { buffer: surface.buffer_mut().unwrap() };
-                    world.broadcast(&mut handle, Trigger::FlagClicked);
-                    handle.buffer.present().unwrap();
+                    // TODO: should render here but it resets the buffer every time.
+                    //       need to implement my own saving the pen texture buffer but idc about this backend that much rn
+                }
+                Event::AboutToWait => {
+                    // ? window.request_redraw();
                 }
 
                 Event::WindowEvent { event: WindowEvent::CloseRequested |

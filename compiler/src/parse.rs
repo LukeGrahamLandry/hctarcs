@@ -24,7 +24,7 @@ macro_rules! unwrap_field {
 
 impl From<ScratchProject> for Project {
     fn from(value: ScratchProject) -> Self {
-        let mut proj = Project { targets: vec![], var_names: vec![], expected_types: vec![], triggers_by_name: HashMap::new() };
+        let mut proj = Project { targets: vec![], var_names: vec![], expected_types: vec![], triggers_by_name: HashMap::new(), any_async: false };
 
         let mut stages = value.targets.iter().filter(|t| t.isStage);
         let stage = stages.next().unwrap();
@@ -132,6 +132,7 @@ impl<'src> Parser<'src> {
     fn parse(mut self) -> Sprite {
         // println!("Parse Sprite {}", self.target.name);
         validate(self.target);
+        let mut any_async = false;
 
         // Need to make two passes over the procedures.
         // Declare parameter vars for type inference then emit the body.
@@ -168,6 +169,8 @@ impl<'src> Parser<'src> {
                 args,
                 needs_async: self.needs_async,
             });
+            self.project.any_async |= self.needs_async;
+            any_async |= self.needs_async;
             self.needs_async = false;
             self.args_by_name.clear();
         }
@@ -182,6 +185,8 @@ impl<'src> Parser<'src> {
                 body: self.parse_body(block.next.as_deref()),
                 needs_async: self.needs_async,
             });
+            self.project.any_async |= self.needs_async;
+            any_async |= self.needs_async;
             self.needs_async = false;
         }
 
@@ -193,6 +198,7 @@ impl<'src> Parser<'src> {
             is_stage: self.target.isStage,
             is_singleton: true,
             costumes: self.target.costumes.clone(),
+            any_async,
         }
     }
 
