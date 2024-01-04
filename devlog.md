@@ -1,6 +1,9 @@
 
+## cli direct wasm build (Jan 3)
+
 alas macroquad was too good to be true. 
 their build system sucks ass if you want to use any other wasm library in the universe. 
+it's a little sad that i was tempted to do a similar thing because I also dislike wasm-bindgen but this is such a pain. 
 
 First attempt messing around 
 ```html
@@ -22,6 +25,16 @@ First attempt messing around
     // init();
 </script>
 ```
+
+i was pretty close actually, found someone else's solution:
+- https://github.com/not-fl3/macroquad/issues/212
+- https://github.com/not-fl3/miniquad/wiki/JavaScript-interop
+- https://gist.github.com/profan/f38c9a2f3d8c410ad76b493f76977afe
+
+the thing where browser console log of an object doesnt make a copy, it just gives you live updating view is such a foot gun. 
+very glad i randomly read someone complaining about it or id be so confused for so much longer. 
+
+This does hurt my goal of it just being a normal rust project tho. 
 
 ## adding async to the compiler (Jan 3)
 

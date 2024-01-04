@@ -150,15 +150,30 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         assert!(cmd.status()?.success());
 
         // HACK HACK HACK
-        // https://gist.github.com/profan/f38c9a2f3d8c410ad76b493f76977afe
         assert_eq!(opts.render, Target::Macroquad);
         let mut genjs = fs::read_to_string(&bindjs)?;
-        genjs = genjs.replace("import * as __wbg_star0 from 'env';", "");
-        genjs = genjs.replace("let wasm;", "let wasm; export const set_wasm = (w) => wasm = w;");
-        genjs = genjs.replace("imports['env'] = __wbg_star0;", "return imports.wbg;");
-        genjs = genjs.replace("const imports = __wbg_get_imports();", "return __wbg_get_imports();");
+        for (before, after) in PATCHES {  // TODO: iffy replacement but none are in expressions
+            assert!(genjs.contains(before), "idk this version of wasm-bindgen?");  // TODO: can i use find's index so dont have to search twice?
+            genjs = genjs.replace(before, &format!("{BREAD_CRUMBS}\n/* (REMOVED) {before} */\n/*ADDED:*/{after}\n/*END PATCH*/"));
+        }
         fs::write(&bindjs, genjs)?;
 
+        let mut index = web_folder.clone();
+        index.push("index.html");
+        // TODO: allow user provided html template and inject the hack
+        fs::write(&index, MACROQUAD_INDEX_HTML(&name, "./mq_js_bundle.js"))?;
+
+        // TODO: ugly cause what happens when you're using a different version. does cargo fetch the src?
+        let macroquad = ureq::get("https://raw.githubusercontent.com/not-fl3/macroquad/master/js/mq_js_bundle.js")
+            .set("User-Agent", &opts.user_agent)
+            .call()?.into_string()?;
+        let mut mq_js_bundle = web_folder.clone();
+        mq_js_bundle.push("mq_js_bundle.js");
+        fs::write(&mq_js_bundle, &macroquad)?;
+    }
+
+    if opts.render == Target::Macroquad {
+        println!("{MACROQUAD_WASM_WARNING}");
     }
 
     if opts.run || opts.debug || opts.first_frame_only{
@@ -178,6 +193,61 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+// Note: kinda relying on these all being statements but easily fixable
+const PATCHES: &[(&str, &str)] = &[
+    ("import * as __wbg_star0 from 'env';", ""),
+    ("let wasm;", "let wasm; export const set_wasm = (w) => wasm = w;"),
+    ("imports['env'] = __wbg_star0;", "return imports.wbg;"),
+    ("const imports = __wbg_get_imports();", "return __wbg_get_imports();"),
+];
+
+// TODO: cli flag to turn this off
+/// Just in case someone comes across the deranged hack I borrowed, give them a unique string to google for
+const BREAD_CRUMBS: &str = "/* Hint: HACK-PATCH-github-LukeGrahamLandry-Hctarcs 2024-01-04 */";
+
+// TODO: instead of printing at this comptime, have a cargo feature that we pass on the command line when compiling for wasm and [cfg(all(not(feature="allow_sketchy_wasm"), arch="wasm32"))] compiler_error!(this message)
+// TODO: that way i dont have to always print but can give hint to avoid confusion and if they know what they're doing they can jsut provide the feature themselves when building
+pub const MACROQUAD_WASM_WARNING: &str = r#"WARNING: Macroquad doesn't play nice with wasm-bindgen.
+The Hctarcs compiler provides a hacky fix it, but it means the web target cannot be built as a normal cargo+wasm_bindgen project anymore.
+You need to run Hctarcs with --web every time. (SAD: cargo build script can't run after compiling).
+
+More Info:
+- https://github.com/not-fl3/macroquad/issues/212
+- https://github.com/not-fl3/miniquad/wiki/JavaScript-interop
+- https://gist.github.com/profan/f38c9a2f3d8c410ad76b493f76977afe
+"#;
+
+fn MACROQUAD_INDEX_HTML(name: &str, mq_js_bundle_url: &str) -> String {
+    format!(r#"
+<html><head><style>
+    body {{ text-align: center }}
+    canvas {{ overflow: hidden; outline: none; display: inline-block; }}
+</style></head><body>
+<canvas id="glcanvas" tabindex='1' width="480" height="360"></canvas>
+<script src="{mq_js_bundle_url}"></script>
+<script type="module">
+    {BREAD_CRUMBS}
+    /*{MACROQUAD_WASM_WARNING}*/
+    // This also requires the compiler to hack in postprocessing step to the wasm_bg_js
+    import init, {{ set_wasm }} from "./{name}.js";
+    let wbg = await init();
+    miniquad_add_plugin({{
+        register_plugin: (importObject) => {{
+            // In fact, unless someone else is messing with it, importObject.wbg should === undefined
+            assert(Object.keys((importObject.wbg || {{}})).length <= Object.keys(wbg || {{}}).length, "What mq_js_bundle exposes to wasm-bindgen should be a subset of what wasm-bindgen asks for.");
+            importObject.wbg = wbg;
+            // When wasm-bindgen gets its hands on the import object, it will move things from [wbg] to [env] where rust can access them.
+            console.log("the 'No __wbg_... function in gl.js' warnings are probably fine :)"); // TODO make them go away
+        }},
+        on_init: () => set_wasm(wasm_exports),
+        version: "0.2.0",
+        name: "wbg",
+    }});
+    load("{name}_bg.wasm");
+</script></body></html>
+"#, )
 }
 
 /// Foot gun: Default::default() is different than clap's cli default.
