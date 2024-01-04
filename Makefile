@@ -15,14 +15,8 @@ web_dist: web
 
 # Make sure NOT to do the thing where you only rebuild if the source changed because im testing the compiler not the json blob.
 test: target/sanity.sb3 target/mandelbrot.sb3 target/stamp_pos.sb3
-	cargo build --bin compiler
-	./target/debug/compiler -i target/mandelbrot.sb3 -o out/gen/mandelbrot --check --deny-poly --deny-async
-	./target/debug/compiler -i target/linrays.sb3 -o out/gen/linrays --check --deny-poly --deny-async
-	./target/debug/compiler -i target/tres.sb3 -o out/gen/tres --check
-	./target/debug/compiler -i target/stamp_pos.sb3 -o out/gen/stamp_pos --check --deny-poly --deny-async
-	./target/debug/compiler -i target/sanity.sb3 -o out/gen/sanity --debug --deny-async
 	cargo test --package compiler first_images -- --exact
-# TODO: cargo test will replace the above
+	./target/debug/compiler -i target/tres.sb3 -o out/gen/tres --check
 
 mandelbrot: target/mandelbrot/project.json
 	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --deny-poly --run

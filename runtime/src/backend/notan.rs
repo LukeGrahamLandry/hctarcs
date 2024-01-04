@@ -1,3 +1,5 @@
+use macroquad::color::BLACK;
+use macroquad::prelude::{draw_text, measure_text};
 use notan::draw::*;
 use notan::prelude::*;
 use crate::backend::RenderBackend;
@@ -127,6 +129,10 @@ impl<'a> RenderHandle for Handle<'a> {
         assert!(costume < self.state.costumes.len());
         self.state.stamps.push((x, y, costume));
         println!("stamp {x}, {y} {costume}")
+    }
+
+    fn say(&mut self, text: &str, _: (f64, f64)) {
+        println!("TODO: [SAY] {text}")
     }
 }
 

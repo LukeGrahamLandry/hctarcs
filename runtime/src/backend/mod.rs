@@ -22,4 +22,6 @@ pub trait RenderHandle {
     fn pen_line(&mut self, line: Line);
 
     fn pen_stamp(&mut self, pos: (f64, f64), costume: usize, size: f64);
+
+    fn say(&mut self, text: &str, pos: (f64, f64));
 }

@@ -3,6 +3,9 @@ pub mod ast;
 pub mod parse;
 pub mod backend;
 
+#[cfg(feature = "cli")]
+pub mod cli;
+
 pub mod wasm_interface {
     use std::alloc::{alloc, Layout};
     use std::ffi::{c_char, CStr, CString};
@@ -48,17 +51,19 @@ pub mod wasm_interface {
 //       for ios put it in assets folder instead of binary?
 //       for wasm you might rather always fetch but use the browser api?
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub enum AssetPackaging {
+    #[default]
     Embed,
     Fetch,
 }
 
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub enum Target {
     Notan,
     Softbuffer,
+    #[default]
     Macroquad,
 }
 

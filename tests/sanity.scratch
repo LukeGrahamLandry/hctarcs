@@ -78,7 +78,6 @@
     (delete-all fail-msgs)
     (cases)
     (failed (++ "Ran " count-tests " tests and failed " (length fail-msgs)))
-    (stop-all)
     )
 
   (proc (eq a b msg)
@@ -101,13 +100,6 @@
     (append fail-msgs msg)
     (say msg)
   )
-
-
-  (proc (check-fails)
-    (if (not (= (length fail-msgs) 0))
-      (stop-all)
-      (:= ignore 0))
-    )
 )
 
 (sprite "Stage"

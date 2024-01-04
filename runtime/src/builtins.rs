@@ -132,8 +132,9 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         self.sprite.last_answer = line;  // TODO: trim new-line?
     }
 
-    pub fn looks_say(&self, msg: Str) {
-        println!("[SAY] {msg:?}")
+    pub fn looks_say(&mut self, msg: Str) {
+        println!("[SAY] {msg:?}");  // TODO: dont print.
+        self.render.say(msg.as_ref(), self.pos());
     }
 
     pub fn control_create_clone_of(&self) {

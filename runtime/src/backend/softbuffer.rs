@@ -87,4 +87,8 @@ impl<'a> RenderHandle for Handle<'a> {
     fn pen_stamp(&mut self, pos: (f64, f64), costume: usize, size: f64) {
         println!("TODO: pen_stamp {pos:?} {costume:?} {size:?}")
     }
+
+    fn say(&mut self, text: &str, _: (f64, f64)) {
+        println!("TODO: [SAY] {text}")
+    }
 }

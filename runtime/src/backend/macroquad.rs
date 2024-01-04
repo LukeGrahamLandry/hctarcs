@@ -105,6 +105,16 @@ impl RenderHandle for Handle {
             pivot: None,
         });
     }
+
+    // TODO: positioning is nothing like real scratch
+    // TODO: speech bubble
+    fn say(&mut self, text: &str, (x, y): (f64, f64)) {
+        let x = x as f32;
+        let y = -y as f32;
+        let font_size = 40;
+        let size = measure_text(text, None, font_size, 1.0);
+        draw_text(text, x - (size.width / 2.0), y - (size.height / 2.0), font_size as f32, BLACK);
+    }
 }
 
 impl From<Argb> for Color {
