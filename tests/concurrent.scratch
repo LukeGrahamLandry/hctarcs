@@ -1,0 +1,50 @@
+(sprite "main"
+  (variables count-pass count-fail) 
+  (lists callstack)
+  (costumes "blank" "assets/blank.png")
+
+  (proc (when-flag-clicked) (cases))
+  (proc (when-flag-clicked) (cases))
+  (proc (when-flag-clicked) (cases))
+
+  (proc (cases)
+    (repeat 50
+      (test-fib 3 2)
+      (test-fib 5 5)
+      (test-fib 7 13)
+    )
+    (say (++ "Pass:" count-pass "  Fail:" count-fail))
+    )
+
+  (proc (test-fib n expected) 
+    (fib n)
+    (if (= (!! callstack (length callstack)) expected) 
+      (do 
+        (:= count-pass (+ count-pass 1))
+        )
+      (do 
+        (:= count-fail (+ count-fail 1))
+        )
+    )
+    (delete callstack (length callstack))
+    )
+
+  ; uses a callstack list for recursion 
+  (proc (fib n)
+    (if (< n 2)
+      (do 
+        (append callstack n)
+        )
+       (do 
+        (fib (- n 1))
+        (fib (- n 2))
+        (append callstack (+ (!! callstack (length callstack)) (!! callstack (- (length callstack) 1))))
+        (delete callstack (- (length callstack) 1))
+        (delete callstack (- (length callstack) 1))
+        ) 
+    )
+    )
+)
+
+(sprite "Stage"
+  (costumes "backdrop" "assets/blank.png"))

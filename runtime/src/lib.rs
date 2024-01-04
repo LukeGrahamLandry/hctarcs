@@ -35,6 +35,8 @@ pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
 
     // TODO: this is going to move to trait Sprite and the ctx method will accept only the resolved id. ImgId wrapper type?
     fn costume_by_name(name: Str) -> Option<usize>;
+
+    fn get_credits() -> &'static str;
 }
 
 /// Types for Msg and Globals are generated for a specific scratch program by the compiler.
@@ -55,7 +57,10 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
 impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
     pub fn new() -> Self {
         let (globals, custom) = S::create_initial_state();
-        credits();
+
+        if args().any(|arg| &arg == "--credits") {
+            println!("{}", S::get_credits())
+        }
         World {
             bases: vec![SpriteBase::default(); custom.len()].into(),
             custom: custom.into(),
@@ -283,17 +288,6 @@ impl ScratchAsset {
     }
 }
 
-// TODO: add project name and author if available
-fn credits() {
-    if args().any(|arg| &arg == "--credits") {
-        println!("{}", CREDITS)
-    }
-}
-
-const CREDITS: &str = r#"This program is compiled from a Scratch project using github.com/LukeGrahamLandry/hctarcs
-All projects shared on the Scratch website are covered by the Creative Commons Attribution Share-Alike license.
-Scratch is a project of the Scratch Foundation, in collaboration with the Lifelong Kindergarten Group at the MIT Media Lab. It is available for free at https://scratch.mit.edu
-"#;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn args() -> impl Iterator<Item=String> {

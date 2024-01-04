@@ -8,7 +8,7 @@ use std::mem::{size_of, size_of_val};
 use std::ops::Add;
 use std::pin::{Pin, pin};
 use std::time::{Duration};
-use crate::{credits, FrameCtx, RenderBackend, ScratchProgram, Trigger, World};
+use crate::{FrameCtx, RenderBackend, ScratchProgram, Trigger, World};
 use crate::sprite::{Sprite, SpriteBase};
 use crate::Instant;
 

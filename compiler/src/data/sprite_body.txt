@@ -1,0 +1,22 @@
+r#"
+#[derive(Default, Clone, Debug)]
+pub struct {name} {{
+{fields}}}
+impl {name} {{
+{procs}
+}}
+impl Sprite<Stage, Backend> for {name} {{
+    fn receive(&mut self, ctx: &mut Ctx, msg: Trigger<Msg>) {{
+        let this = self;
+        match msg {{
+            {handlers}
+            _ => {{}}  // Ignored.
+        }}
+    }}
+
+    fn receive_async(&self, msg: Trigger<Msg>) -> Box<FnFut<Stage, Backend>> {{ forward_to_sync::<Stage, Backend, Self>(msg) }}
+
+    // Grumble grumble object safety...
+    fn clone_boxed(&self) -> Box<dyn Sprite<Stage, Backend>> {{ Box::new(self.clone()) }}
+}}
+"#

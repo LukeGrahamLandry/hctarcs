@@ -2,18 +2,26 @@ use std::fs;
 use std::fs::create_dir_all;
 use std::io::{Cursor, Read, read_to_string};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command};
 use clap::Parser;
 use serde::Deserialize;
 use zip::ZipArchive;
 use crate::{AssetPackaging, Target};
 use crate::ast::Project;
-use crate::backend::rust::{emit_rust, make_cargo_toml};
+use crate::backend::rust::{emit_rust};
 use crate::scratch_schema::parse;
 
 pub fn run(opts: Cli) -> anyhow::Result<()> {
-    assert_eq!(opts.assets, AssetPackaging::Embed);
+    for name in &["main_rs", "sprite_body"] {
+        assert!(opts.get_template_path(name).is_none(), "Overriding template {name} is not implemented.");
+    }
 
+    if let Some(_id) = opts.log_default_template {
+        todo!("I actually can't do this cause of how my macros work. ");
+        // exit(0);
+    }
+
+    assert_eq!(opts.assets, AssetPackaging::Embed);
     let (project, name) = if opts.input.starts_with("http") {
         assert!(opts.input.contains("scratch.mit.edu/projects") || opts.input.contains("turbowarp.org"));
         let id = opts.input.split("?").nth(0).unwrap().trim_end_matches("/").split("/").last().unwrap().trim();
@@ -43,7 +51,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         path.push("project.json");
         fs::write(path, raw.as_str())?;
         let project = parse(raw.as_str())?;
-        let name = PathBuf::from(opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_");
+        let name = PathBuf::from(&opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_");
 
         // TODO: if Assets::fetch, do a dry run to make sure scratch has the referenced things (it might be a local sb3 never shared)
         // TODO: Assets::fetch option to change base url
@@ -86,10 +94,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
     path.push(".gitignore");
     fs::write(path, "target\nproject.json\n.DS_Store\n")?;
 
-    let cargotoml = match opts.cargotoml {
-        None => make_cargo_toml(opts.render, opts.assets).replace("scratch_out", &name),
-        Some(path) => fs::read_to_string(path)?,
-    };
+    let cargotoml = template!(opts, "data/cargo_toml", name=&name, backend=opts.render.code_name());
     let mut path = opts.outdir.clone();
     path.push("Cargo.toml");
     fs::write(path, cargotoml)?;
@@ -116,6 +121,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         }
     }
 
+    let warning = template!(opts, "data/macroquad_warning", );
     if opts.web {
         let mut cmd = Command::new("cargo");
         cmd.arg("build");
@@ -161,7 +167,8 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         let mut index = web_folder.clone();
         index.push("index.html");
         // TODO: allow user provided html template and inject the hack
-        fs::write(&index, MACROQUAD_INDEX_HTML(&name, "./mq_js_bundle.js"))?;
+        let data = template!(opts, "data/macroquad_index", mq_js_bundle_url="./mq_js_bundle.js", hint=BREAD_CRUMBS, warning_comment=warning, name=&name);
+        fs::write(&index, data)?;
 
         // TODO: ugly cause what happens when you're using a different version. does cargo fetch the src?
         let macroquad = ureq::get("https://raw.githubusercontent.com/not-fl3/macroquad/master/js/mq_js_bundle.js")
@@ -173,7 +180,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
     }
 
     if opts.render == Target::Macroquad {
-        println!("{MACROQUAD_WASM_WARNING}");
+        println!("{warning}");
     }
 
     if opts.run || opts.debug || opts.first_frame_only{
@@ -195,6 +202,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
     Ok(())
 }
 
+// TODO: allow overriding these
 // Note: kinda relying on these all being statements but easily fixable
 const PATCHES: &[(&str, &str)] = &[
     ("import * as __wbg_star0 from 'env';", ""),
@@ -203,54 +211,13 @@ const PATCHES: &[(&str, &str)] = &[
     ("const imports = __wbg_get_imports();", "return __wbg_get_imports();"),
 ];
 
+// TODO: store templates elsewhere and include them? they could be fmt literals and use with format! and named params
+
 // TODO: cli flag to turn this off
 /// Just in case someone comes across the deranged hack I borrowed, give them a unique string to google for
 const BREAD_CRUMBS: &str = "/* Hint: HACK-PATCH-github-LukeGrahamLandry-Hctarcs 2024-01-04 */";
 
-// TODO: instead of printing at this comptime, have a cargo feature that we pass on the command line when compiling for wasm and [cfg(all(not(feature="allow_sketchy_wasm"), arch="wasm32"))] compiler_error!(this message)
-// TODO: that way i dont have to always print but can give hint to avoid confusion and if they know what they're doing they can jsut provide the feature themselves when building
-pub const MACROQUAD_WASM_WARNING: &str = r#"WARNING: Macroquad doesn't play nice with wasm-bindgen.
-The Hctarcs compiler provides a hacky fix it, but it means the web target cannot be built as a normal cargo+wasm_bindgen project anymore.
-You need to run Hctarcs with --web every time. (SAD: cargo build script can't run after compiling).
-
-More Info:
-- https://github.com/not-fl3/macroquad/issues/212
-- https://github.com/not-fl3/miniquad/wiki/JavaScript-interop
-- https://gist.github.com/profan/f38c9a2f3d8c410ad76b493f76977afe
-"#;
-
-fn MACROQUAD_INDEX_HTML(name: &str, mq_js_bundle_url: &str) -> String {
-    format!(r#"
-<html><head><style>
-    body {{ text-align: center }}
-    canvas {{ overflow: hidden; outline: none; display: inline-block; }}
-</style></head><body>
-<canvas id="glcanvas" tabindex='1' width="480" height="360"></canvas>
-<script src="{mq_js_bundle_url}"></script>
-<script type="module">
-    {BREAD_CRUMBS}
-    /*{MACROQUAD_WASM_WARNING}*/
-    // This also requires the compiler to hack in postprocessing step to the wasm_bg_js
-    import init, {{ set_wasm }} from "./{name}.js";
-    let wbg = await init();
-    miniquad_add_plugin({{
-        register_plugin: (importObject) => {{
-            // In fact, unless someone else is messing with it, importObject.wbg should === undefined
-            assert(Object.keys((importObject.wbg || {{}})).length <= Object.keys(wbg || {{}}).length, "What mq_js_bundle exposes to wasm-bindgen should be a subset of what wasm-bindgen asks for.");
-            importObject.wbg = wbg;
-            // When wasm-bindgen gets its hands on the import object, it will move things from [wbg] to [env] where rust can access them.
-            console.log("the 'No __wbg_... function in gl.js' warnings are probably fine :)"); // TODO make them go away
-        }},
-        on_init: () => set_wasm(wasm_exports),
-        version: "0.2.0",
-        name: "wbg",
-    }});
-    load("{name}_bg.wasm");
-</script></body></html>
-"#, )
-}
-
-/// Foot gun: Default::default() is different than clap's cli default.
+// Foot gun: Default::default() is different than clap's cli default.
 #[derive(Parser, Debug, Default)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -263,8 +230,49 @@ pub struct Cli {
     #[arg(short, long)]
     pub outdir: PathBuf,
 
+    /// Which graphics library to use.
+    ///
+    /// Not all backends are guaranteed to support all features but the default is a superset of the rest.
     #[arg(long, default_value="macroquad")]
     pub render: Target,
+
+    /// How will the executable find image/sound files. Trade off between binary size and reliability.
+    #[arg(long, default_value="embed")]
+    pub assets: AssetPackaging,
+
+    /// What to use as the User-Agent http header when the compiler calls the scratch api.
+    #[arg(long, default_value = "github/LukeGrahamLandry/hctarcs")]
+    pub user_agent: String,
+
+    /// Build to wasm, run wasm-bindgen, and generate an html shim.
+    ///
+    /// In theory this is just a convince over `cargo build --target wasm32-... && wasm-bindgen ...` but some backends need special hacks to make that work.
+    #[arg(long)]
+    pub web: bool,
+
+    /// Run for one frame, save a screenshot, and then exit (same as building normally then passing --first-frame-only to the exe)
+    #[arg(long)]
+    pub first_frame_only: bool,
+
+    // TODO: UNUSED thus far
+    /// Override output templates used in the compiler. Format: "id=filepath"
+    /// TODO: parameter replacement not implemented
+    #[arg(long)]
+    pub template: Option<Vec<String>>,
+
+    // TODO: sub command? so you can do this without specifying input/output that are just ignored
+    /// TODO: not implemented.
+    /// Instead of compiling, log the default content of a template, and exit. Useful for seeing which parameters you can override.
+    #[arg(long)]
+    pub log_default_template: Option<String>,
+
+    /// Assert that no polymorphic types were used in the program. Used for testing. Should probably be moved to a script.
+    #[arg(long)]
+    pub deny_poly: bool,
+
+    /// Assert that no async calls were used in the program. Used for testing. Should probably be moved to a script.
+    #[arg(long)]
+    pub deny_async: bool,
 
     /// Use cargo fmt on the output.
     #[arg(long)]
@@ -282,33 +290,30 @@ pub struct Cli {
     #[arg(long)]
     pub debug: bool,
 
-    /// Path to your own file to use instead of the default generated Cargo.toml
-    #[arg(long)]
-    pub cargotoml: Option<PathBuf>,
-
-    /// Assert that no polymorphic types were used in the program. Used for testing. Should probably be moved to a script.
-    #[arg(long)]
-    pub deny_poly: bool,
-
-    /// Assert that no async calls were used in the program. Used for testing. Should probably be moved to a script.
-    #[arg(long)]
-    pub deny_async: bool,
-
-    /// What to use as the User-Agent http header when the compiler calls the scratch api.
-    #[arg(long, default_value = "github/LukeGrahamLandry/hctarcs")]
-    pub user_agent: String,
-
-    #[arg(long, default_value="embed")]
-    pub assets: AssetPackaging,
-
-    #[arg(long)]
-    pub web: bool,
-
-    /// Run for one frame, save a screenshot, and then exit (same as building normally then passing --first-frame-only to the exe)
-    #[arg(long)]
-    pub first_frame_only: bool,
 
     // TODO: --sc1 (and walk up file tree to find assets folder to put cwd)
+}
+
+impl Cli {
+    fn get_template_path(&self, name: &str) -> Option<&str> {
+        // TODO: HACK until i figure out abs paths. also should use pathbuf function?
+        let name = name.split("/").last().unwrap();  // lookup key is a magic id, not a path
+        self.template.iter().map(|templates| {  // TODO: untested
+            templates.iter().find_map(|arg| {
+                let mut parts = arg.split('=');
+                let key = parts.next().expect("Override key.").trim();
+                let value = parts.next().expect("Override value.").trim();
+                assert!(parts.next().is_none(), "Expect one '=' in template override");
+
+                if key == name {
+                    println!("[DEBUG] template {name} overridden to {value}");
+                    Some(value)
+                } else {
+                    None
+                }
+            })
+        }).flatten().next()
+    }
 }
 
 #[derive(Deserialize)]

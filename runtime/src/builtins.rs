@@ -5,7 +5,7 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
 use std::io::{stdout, Write};
-use std::time::{Instant, SystemTime};
+use std::time::{SystemTime};
 use crate::backend::RenderBackend;
 use crate::poly::Str;
 use crate::{RenderHandle, ScratchProgram, Sprite};

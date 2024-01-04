@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use crate::ast::{BinOp, Expr, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
+use crate::template;
 
 // TODO: it would be more elegant if changing render backend was just a feature flag, not a src change. same for AssetPackaging but thats harder cause it only needs to copy the files there for embed
 // TODO: codegen fetch (its easy)
@@ -53,47 +54,19 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
 
     let async_type_marker = if project.any_async { "usize" } else { "()" };
     let backend_str = backend.code_name();
-    format!(r#"
-{HEADER}
-// The type imported here must also be enabled in the `runtime` crate with a feature flag.
-type Backend = runtime::backend::{backend_str}::BackendImpl<Stage>;
-fn main() {{
-    RenderBackend::<Stage>::run()
-}}
-
-impl ScratchProgram<Backend> for Stage {{
-    type Msg = Msg;
-    type Globals = Stage;
-    // HACK
-    type UnitIfNoAsync = {async_type_marker};
-    fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
-        (Stage::default(), vec![{sprites}])
-    }}
-
-    fn get_costumes() -> Vec<ScratchAsset> {{
-        vec![{costume_includes}]
-    }}
-
-    fn costume_by_name(name: Str) -> Option<usize> {{
-        match name.as_ref() {{
-            {costume_names}
-            _ => None, // Silently ignore
-        }}
-    }}
-}}
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-pub enum Msg {{
-    InvalidComputedMessage,
-    {msg_fields}
-}}
-fn msg_of(value: Str) -> Msg {{
-        match value.as_ref() {{
-            {msg_names}
-            _ => Msg::InvalidComputedMessage, // Silently ignore
-        }}
-}}
-
-    {body}"#)
+    // TODO: allow override?
+    // TODO: fix redundant template syntax
+    template!(
+        "../data/main_rs",
+        backend_str=backend_str,
+        sprites=sprites,
+        costume_includes=costume_includes,
+        costume_names=costume_names,
+        msg_fields=msg_fields,
+        msg_names=msg_names,
+        body=body,
+        async_type_marker=async_type_marker
+    )
 }
 
 fn trigger_msg_ident(project: &Project, v: VarId) -> String {
@@ -112,40 +85,6 @@ struct Emit<'src> {
     project: &'src Project,
     target: &'src Sprite,
     triggers: HashMap<Trigger, Vec<RustStmt>>
-}
-
-const HEADER: &str = r#"
-//! This file is @generated from a Scratch project using github.com/LukeGrahamLandry/hctarcs
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
-#![allow(unused)]
-use runtime::*;
-use sprite::*;
-use poly::*;
-use backend::{RenderBackend, RenderHandle};
-use runtime::builtins::*;
-type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
-"#;
-
-pub fn make_cargo_toml(backend: Target, _assets: AssetPackaging) -> String {
-    format!(r#"
-[package]
-name = "scratch_out"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-runtime = {{ path = "../../../runtime", features=["render-{}",] }}  # TODO: compiler arg for local path or get from github
-# TODO: feature fetch-assets
-
-# Settings here will be ignored if you're using a cargo workspace.
-# Otherwise, uncomment to shink binary size.
-# [profile.release]
-# panic = "abort"
-# strip = "debuginfo" # true
-# lto = true # Enabling lto slows down incremental builds but greatly reduces binary size.
-# codegen-units = 1
-"#, backend.code_name())
 }
 
 impl<'src> Emit<'src> {
@@ -169,28 +108,9 @@ impl<'src> Emit<'src> {
         let handlers: String = self.triggers.iter().map(|(trigger, body)| {
             format!("{} => {{{}}},\n", format_trigger(&self.project, trigger), RustStmt::Block(body.clone()).to_sync().unwrap())
         }).collect();
-        // TODO: wrong! defaults are in the json
-        format!(r##"
-#[derive(Default, Clone, Debug)]
-pub struct {0} {{
-{fields}}}
-impl {0} {{
-{procs}
-}}
-impl Sprite<Stage, Backend> for {0} {{
-    fn receive(&mut self, ctx: &mut Ctx, msg: Trigger<Msg>) {{
-        let this = self;
-        match msg {{
-            {handlers}
-            _ => {{}}  // Ignored.
-        }}
-    }}
-
-    fn receive_async(&self, msg: Trigger<Msg>) -> Box<FnFut<Stage, Backend>> {{ forward_to_sync::<Stage, Backend, Self>(msg) }}
-
-    // Grumble grumble object safety...
-    fn clone_boxed(&self) -> Box<dyn Sprite<Stage, Backend>> {{ Box::new(self.clone()) }}
-}}"##, self.target.name)
+        // TODO: wrong? var defaults are in the json
+        // TODO: override?
+        template!("../data/sprite_body", name=self.target.name, handlers=handlers, procs=procs, fields=fields)
     }
 
     fn emit_custom_proc(&mut self, t: &'src Proc) -> String{

@@ -1,0 +1,28 @@
+// index.html file that loads wasm blob and js glue with hack for interop between macroquad and wasm-bindgen
+r#"<html><head><style>
+    body {{ text-align: center }}
+    canvas {{ overflow: hidden; outline: none; display: inline-block; }}
+</style></head><body>
+<!-- `glcanvas` is a magic id mq_js_bundle looks for -->
+<canvas id="glcanvas" tabindex='1' width="480" height="360"></canvas>
+<script src="{mq_js_bundle_url}"></script>
+<script type="module">
+    {hint}
+    /*{warning_comment}*/
+    // This also requires the compiler to hack in postprocessing step to the wasm_bg_js
+    import init, {{ set_wasm }} from "./{name}.js";
+    let wbg = await init();
+    miniquad_add_plugin({{
+        register_plugin: (importObject) => {{
+            // In fact, unless someone else is messing with it, importObject.wbg should === undefined
+            assert(Object.keys((importObject.wbg || {{}})).length <= Object.keys(wbg || {{}}).length, "What mq_js_bundle exposes to wasm-bindgen should be a subset of what wasm-bindgen asks for.");
+            importObject.wbg = wbg;
+            // When wasm-bindgen gets its hands on the import object, it will move things from [wbg] to [env] where rust can access them.
+            console.log("the 'No __wbg_... function in gl.js' warnings are probably fine :)"); // TODO make them go away
+        }},
+        on_init: () => set_wasm(wasm_exports),
+        version: "0.2.0",
+        name: "wbg",
+    }});
+    load("{name}_bg.wasm");
+</script></body></html>"#

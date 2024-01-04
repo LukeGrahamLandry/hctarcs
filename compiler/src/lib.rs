@@ -1,3 +1,26 @@
+
+// TODO: list of valid template names for warning if misspell
+// TODO: arg for just print default value of template.
+#[macro_export] macro_rules! template {
+    ($opts:expr, $id:literal, $($name:ident=$value:expr),*) => {
+        match $opts.get_template_path($id) {
+            None => template!($id, $($name = $value),*),
+            Some(path) => {
+                let content = fs::read_to_string(path)?;
+                // TODO: apply replacements
+                // todo!("cli override template {} to {path} containing {content}", $id)
+                content
+            }
+        }
+    };
+
+    // TODO: figure out absolute paths so can include the data/
+    ($id:literal, $($name:ident=$value:expr),*) => {
+        format!(include!(concat!($id, ".txt")), $($name = $value),*)
+    };
+}
+
+
 pub mod scratch_schema;
 pub mod ast;
 pub mod parse;
@@ -11,7 +34,7 @@ pub mod wasm_interface {
     use std::ffi::{c_char, CStr, CString};
     use std::ptr::slice_from_raw_parts;
     use crate::ast::Project;
-    use crate::backend::rust::{emit_rust, make_cargo_toml};
+    use crate::backend::rust::{emit_rust};
     use crate::scratch_schema::parse;
     use crate::{AssetPackaging, Target};
 
@@ -26,7 +49,7 @@ pub mod wasm_interface {
 
     #[no_mangle]
     pub extern "C" fn get_cargo_toml() -> *const c_char {
-        CString::new(make_cargo_toml(Target::Macroquad, AssetPackaging::Fetch)).unwrap().into_raw()
+        CString::new(String::from("TODO: ffi get_cargo_toml")).unwrap().into_raw()
     }
 
     /// len DOES include null terminator

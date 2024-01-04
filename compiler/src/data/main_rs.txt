@@ -1,0 +1,61 @@
+r##"
+//! This file is @generated from a Scratch project using github.com/LukeGrahamLandry/hctarcs
+#![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
+#![allow(unused)]
+use runtime::*;
+use sprite::*;
+use poly::*;
+use backend::{{RenderBackend, RenderHandle}};
+use runtime::builtins::*;
+type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
+
+// The type imported here must also be enabled in the `runtime` crate with a feature flag.
+type Backend = runtime::backend::{backend_str}::BackendImpl<Stage>;
+fn main() {{
+    RenderBackend::<Stage>::run()
+}}
+
+impl ScratchProgram<Backend> for Stage {{
+    type Msg = Msg;
+    type Globals = Stage;
+    // HACK
+    type UnitIfNoAsync = {async_type_marker};
+    fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
+        (Stage::default(), vec![{sprites}])
+    }}
+
+    fn get_costumes() -> Vec<ScratchAsset> {{
+        vec![{costume_includes}]
+    }}
+
+    fn costume_by_name(name: Str) -> Option<usize> {{
+        match name.as_ref() {{
+            {costume_names}
+            _ => None, // Silently ignore
+        }}
+    }}
+
+    // TODO: add project name and author if available
+    fn get_credits() -> &'static str {{
+        r#"This program is compiled from a Scratch project using github.com/LukeGrahamLandry/hctarcs
+All projects shared on the Scratch website are covered by the Creative Commons Attribution Share-Alike license.
+Scratch is a project of the Scratch Foundation, in collaboration with the Lifelong Kindergarten Group at the MIT Media Lab. It is available for free at https://scratch.mit.edu"#
+    }}
+}}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum Msg {{
+    InvalidComputedMessage,
+    {msg_fields}
+}}
+
+fn msg_of(value: Str) -> Msg {{
+        match value.as_ref() {{
+            {msg_names}
+            _ => Msg::InvalidComputedMessage, // Silently ignore
+        }}
+}}
+
+    {body}
+"##

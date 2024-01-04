@@ -45,8 +45,8 @@ fn first_images() -> anyhow::Result<()> {
         }
     }
 
-    image.save_inferred("out/all.png")?;
-    assert!(Command::new("open").arg("out/all.png").status()?.success());
+    image.save_inferred("target/all.png")?;
+    assert!(Command::new("open").arg("target/all.png").status()?.success());
 
     Ok(())
 }

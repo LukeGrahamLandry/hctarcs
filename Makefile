@@ -43,4 +43,8 @@ target/stamp_pos.sb3: tests/stamp_pos.scratch
 	cd tests && ../vendor/scratch-compiler/target/release/scratch-compiler stamp_pos.scratch
 	mv "./tests/project.sb3" "target/stamp_pos.sb3"
 
+target/concurrent.sb3: tests/concurrent.scratch
+	cd tests && ../vendor/scratch-compiler/target/release/scratch-compiler concurrent.scratch
+	mv "./tests/project.sb3" "target/concurrent.sb3"
+
 .PHONY: release_web test web mandelbrot tres linrays

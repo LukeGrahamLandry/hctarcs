@@ -1,0 +1,18 @@
+r#"
+[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runtime = {{ path = "../../../runtime", features=["render-{backend}",] }}  # TODO: compiler arg for local path or get from github
+# TODO: feature fetch-assets
+
+# Settings here will be ignored if you're using a cargo workspace.
+# Otherwise, uncomment to shink binary size.
+# [profile.release]
+# panic = "abort"
+# strip = "debuginfo" # true
+# lto = true # Enabling lto slows down incremental builds but greatly reduces binary size.
+# codegen-units = 1
+"#

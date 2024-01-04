@@ -1,4 +1,22 @@
 
+## templates
+
+The compiler needs several string templates for special files and its getting pretty ugly to have them as constants in the src. 
+And when they need vars inserted its extra annoying because format macro needs to take a string literal 
+not a string constant, so I've been making a function for each that just takes args and calls format.
+Plus, I want to support overriding any file from the cli. 
+
+Maybe better is a folder of files that contain a string literal like a format string that you include and  
+first check a hashmap of overrides to maybe use a different filename. 
+Was thinking that would suck cause override would need to fmt escape curly braces but no cause dynamic file wouldn't be macro parsed. 
+So then default case can still use fast fmt to insert args and custom needs to find+replace. 
+Always use named args, and then the compiler checks that my args match the expected ones. 
+That's pretty pleasing. 
+
+Unrelated: my great idea of committing the generated frames png, so you can see diffs doesn't work because 
+it seems there's random noise in generating the image, so you get changes even when they look the same. 
+Too bad cause the github desktop img diff display is very nice. 
+
 ## cli direct wasm build (Jan 3)
 
 alas macroquad was too good to be true. 

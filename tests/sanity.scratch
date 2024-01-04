@@ -4,7 +4,7 @@
 
 (sprite "main"
   (variables ignore a count-tests)  ; TODO: how to have an empty block 
-  (lists fail-msgs lst)
+  (lists fail-msgs lst callstack)
   (costumes "blank" "assets/blank.png")
 
   (proc (cases)
@@ -47,6 +47,19 @@
     (eq (!! lst 3) true "3rd")
     (delete-all lst)
     (eq (length lst) 0 "cleared")
+    (append lst "a")
+    (append lst "b")
+    (append lst "c")
+    (eq (length lst) 3 "push")
+    (eq (!! lst (length lst)) "c" "top")
+    (delete lst (length lst))
+    (eq (length lst) 2 "rm")
+    (eq (!! lst (length lst)) "b" "top")
+    (delete lst (length lst))
+    (eq (length lst) 1 "rm")
+    (eq (!! lst (length lst)) "a" "top")
+    (delete lst (length lst))
+    (eq (length lst) 0 "rm")
 
     ; scratch-compiler does basic constant folding so use a level of indirection to trick it into actually testing my thing. 
     (:= a 90)
@@ -70,7 +83,35 @@
     ; TODO: mod edge cases
     (eq (mod 5 3) 2 "basic mod")
     ; TODO: float edge cases
+    
+    (test-fib 3 2)
+    (test-fib 5 5)
+    (test-fib 7 13)
 
+    )
+
+  (proc (test-fib n expected) 
+    (eq (length callstack) 0 "empty start")
+    (fib n)
+    (eq (!! callstack (length callstack)) expected "fib(5)")
+    (delete callstack (length callstack))
+    (eq (length callstack) 0 "empty end")
+    )
+
+  ; uses a callstack list for recursion 
+  (proc (fib n)
+    (if (< n 2)
+      (do 
+        (append callstack n)
+        )
+       (do 
+        (fib (- n 1))
+        (fib (- n 2))
+        (append callstack (+ (!! callstack (length callstack)) (!! callstack (- (length callstack) 1))))
+        (delete callstack (- (length callstack) 1))
+        (delete callstack (- (length callstack) 1))
+        ) 
+    )
     )
 
   (proc (when-flag-clicked)
@@ -99,6 +140,7 @@
   (proc (failed msg)
     (append fail-msgs msg)
     (say msg)
+    (change-y -15)  ; TODO: remove when my say works like scratch's
   )
 )
 

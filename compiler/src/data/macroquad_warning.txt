@@ -1,0 +1,12 @@
+// TODO: instead of printing at this comptime, have a cargo feature that we pass on the command line when compiling for wasm and [cfg(all(not(feature="allow_sketchy_wasm"), arch="wasm32"))] compiler_error!(this message)
+// TODO: that way i dont have to always print but can give hint to avoid confusion and if they know what they're doing they can jsut provide the feature themselves when building
+r#"
+WARNING: Macroquad doesn't play nice with wasm-bindgen.
+The Hctarcs compiler provides a hacky fix it, but it means the web target cannot be built as a normal cargo+wasm_bindgen project anymore.
+You need to run Hctarcs with --web every time. (SAD: cargo build script can't run after compiling).
+
+More Info:
+- https://github.com/not-fl3/macroquad/issues/212
+- https://github.com/not-fl3/miniquad/wiki/JavaScript-interop
+- https://gist.github.com/profan/f38c9a2f3d8c410ad76b493f76977afe
+"#
