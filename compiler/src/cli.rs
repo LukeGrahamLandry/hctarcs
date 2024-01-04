@@ -11,6 +11,16 @@ use crate::ast::Project;
 use crate::backend::rust::{emit_rust};
 use crate::scratch_schema::parse;
 
+// the function that does it from an iter is a pain cause they all have to be the same type.
+macro_rules! path {
+    ($base:expr, $($part:expr);*) => {{
+        let mut path = $base.clone();
+        $(path.push($part));*;
+        path
+    }};
+}
+// TODO: one like ^ for args so you can pass str and pathbuf together
+
 pub fn run(opts: Cli) -> anyhow::Result<()> {
     for name in &["main_rs", "sprite_body"] {
         assert!(opts.get_template_path(name).is_none(), "Overriding template {name} is not implemented.");
@@ -46,30 +56,25 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         let mut zip = ZipArchive::new(Cursor::new(bytes))?;
         let proj = zip.by_name("project.json")?;
         let raw = read_to_string(proj)?;
-        let mut path = opts.outdir.clone();
-        create_dir_all(&path)?;
-        path.push("project.json");
-        fs::write(path, raw.as_str())?;
+        create_dir_all(&opts.outdir)?;
+        fs::write(path!(opts.outdir, "project.json"), raw.as_str())?;
         let project = parse(raw.as_str())?;
         let name = PathBuf::from(&opts.input).file_name().unwrap().to_string_lossy().replace(['.'], "_");
 
         // TODO: if Assets::fetch, do a dry run to make sure scratch has the referenced things (it might be a local sb3 never shared)
         // TODO: Assets::fetch option to change base url
         // TODO be smarter about this for web.
+        let assets_path = path!(opts.outdir, "src"; "assets");
+        fs::create_dir_all(&assets_path).unwrap();
         project.targets
             .iter()
             .flat_map(|t| t.costumes.iter())
             .for_each(|c| {
                 // TOOD: instead of unwrap, if its not there somehow try fetching that hash from scratch api? more useful once i support raw project.json without bundled
                 let mut file = zip.by_name(&c.md5ext).unwrap();
-                let mut path = opts.outdir.clone();
-                path.push("src");
-                path.push("assets");
-                fs::create_dir_all(&path).unwrap();
-                path.push(c.md5ext.clone());
                 let mut buf = vec![];
                 file.read_to_end(&mut buf).unwrap();
-                fs::write(path, buf).unwrap();
+                fs::write(path!(assets_path, c.md5ext.clone()), buf).unwrap();
             });
 
         (project, name)
@@ -84,28 +89,17 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
     }
     let result = emit_rust(&project, opts.render, opts.assets);
 
-    let mut path = opts.outdir.clone();
-    path.push("src");
-    create_dir_all(&path)?;
-    path.push("main.rs");
-    fs::write(path, &result)?;
+    let src_path = path!(opts.outdir, "src");
+    create_dir_all(&src_path)?;
+    fs::write(path!(src_path, "main.rs"), &result)?;
 
-    let mut path = opts.outdir.clone();
-    path.push(".gitignore");
-    fs::write(path, "target\nproject.json\n.DS_Store\n")?;
+    fs::write(path!(opts.outdir, ".gitignore"), "target\nproject.json\n.DS_Store\n")?;
 
     let cargotoml = template!(opts, "data/cargo_toml", name=&name, backend=opts.render.code_name());
-    let mut path = opts.outdir.clone();
-    path.push("Cargo.toml");
-    fs::write(path, cargotoml)?;
+    fs::write(path!(opts.outdir, "Cargo.toml"), cargotoml)?;
 
     // TODO: output this in the web demo too
-    let mut path = opts.outdir.clone();
-    path.push("rust-toolchain.toml");
-    fs::write(path, "[toolchain]\nchannel = \"nightly\"")?;
-
-    // println!("[INFO] {} Polymorphic Type Annotations", result.matches(": Poly").count());
-    // println!("[INFO] {} Polymorphic Constructor Calls", result.matches("Poly::from").count());
+    fs::write(path!(opts.outdir, "rust-toolchain.toml"), "[toolchain]\nchannel = \"nightly\"")?;
 
     // Note: Starting a new process hangs forever when running in RustRover's profiler???
     if opts.fmt {
@@ -124,35 +118,33 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
     let warning = template!(opts, "data/macroquad_warning", );
     if opts.web {
         let mut cmd = Command::new("cargo");
-        cmd.arg("build");
-        cmd.arg("--release");
-        cmd.arg("--target");
-        cmd.arg("wasm32-unknown-unknown");
+        cmd.args(&["build", "--release", "--target", "wasm32-unknown-unknown"]);
         assert!(cmd.current_dir(&opts.outdir).status()?.success());
-        let mut wasm = opts.outdir.clone();
-        loop {  // Look upwards encase its a workspace
-            wasm.push("target");
-            if wasm.exists() {
-                break;
-            } else {
-                assert!(wasm.pop() && wasm.pop(), "Failed to find target directory. ")
+
+        let target_folder = {
+            let mut target_folder = opts.outdir.clone();
+            loop {  // Look upwards encase its a workspace
+                target_folder.push("target");
+                if target_folder.exists() {
+                    break;
+                } else {
+                    assert!(target_folder.pop() && target_folder.pop(), "Failed to find target directory. ")
+                }
             }
-        }
-        let mut web_folder = wasm.clone();
-        web_folder.push("web");
-        wasm.push("wasm32-unknown-unknown");
-        wasm.push("release");
-        wasm.push(format!("{name}.wasm"));
+            target_folder
+        };
+
+        let wasm = path!(target_folder, "wasm32-unknown-unknown"; "release"; format!("{name}.wasm"));
+        let web_folder = path!(target_folder, "web");
         assert!(wasm.exists(), "File Not Found {wasm:?}");
 
         create_dir_all(&web_folder)?;
-        let mut old_wasm = web_folder.clone();
-        old_wasm.push(format!("{name}.wasm"));
-        fs::copy(&wasm, old_wasm)?;
+        fs::copy(&wasm, path!(web_folder, format!("{name}.wasm")))?;
         let mut cmd = Command::new("wasm-bindgen");
-        cmd.arg(wasm).arg("--target").arg("web").arg("--out-dir").arg(&web_folder);
-        let mut bindjs = web_folder.clone();
-        bindjs.push(format!("{name}.js"));
+        // TODO: helper for run external command and offering to install if not available
+        // TODO: see if the other cli args in the help menu can make my patch less egregious
+        cmd.arg(wasm).args(&["--target", "web", "--out-dir"]).arg(&web_folder).arg("--no-typescript");
+        let bindjs = path!(web_folder, format!("{name}.js"));
         assert!(cmd.status()?.success());
 
         // HACK HACK HACK
@@ -164,19 +156,19 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         }
         fs::write(&bindjs, genjs)?;
 
-        let mut index = web_folder.clone();
-        index.push("index.html");
-        // TODO: allow user provided html template and inject the hack
+        let index = path!(web_folder, "index.html");
+
         let data = template!(opts, "data/macroquad_index", mq_js_bundle_url="./mq_js_bundle.js", hint=BREAD_CRUMBS, warning_comment=warning, name=&name);
         fs::write(&index, data)?;
 
-        // TODO: ugly cause what happens when you're using a different version. does cargo fetch the src?
-        let macroquad = ureq::get("https://raw.githubusercontent.com/not-fl3/macroquad/master/js/mq_js_bundle.js")
-            .set("User-Agent", &opts.user_agent)
-            .call()?.into_string()?;
-        let mut mq_js_bundle = web_folder.clone();
-        mq_js_bundle.push("mq_js_bundle.js");
-        fs::write(&mq_js_bundle, &macroquad)?;
+        let macroquad = match opts.get_template_path("mq_js_bundle") {
+            None => ureq::get("https://raw.githubusercontent.com/not-fl3/macroquad/master/js/mq_js_bundle.js")
+                .set("User-Agent", &opts.user_agent) // TODO: can u get the src from cargo instead of magic url? cause what if theres a breaking change
+                .call()?.into_string()?,
+            Some(s) => s.to_string()
+        };
+
+        fs::write(&path!(web_folder, "mq_js_bundle.js"), &macroquad)?;
     }
 
     if opts.render == Target::Macroquad {

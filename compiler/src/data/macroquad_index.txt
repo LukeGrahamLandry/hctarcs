@@ -1,4 +1,5 @@
 // index.html file that loads wasm blob and js glue with hack for interop between macroquad and wasm-bindgen
+// TODO: message while wasm is loading
 r#"<html><head><style>
     body {{ text-align: center }}
     canvas {{ overflow: hidden; outline: none; display: inline-block; }}
