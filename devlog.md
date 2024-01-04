@@ -1,4 +1,28 @@
 
+alas macroquad was too good to be true. 
+their build system sucks ass if you want to use any other wasm library in the universe. 
+
+First attempt messing around 
+```html
+<canvas id="glcanvas" tabindex='1'></canvas>
+<script src="./quad.js"></script>
+<script type="module">
+    // removed import from env in
+    // REMOVE imports['env'] =___dasldas; in __wbg_get_imports
+    // change default export to __wbg_get_imports
+    // load("linrays_sb3.wasm");
+    import __wbg_get_imports from "./linrays_sb3.js";
+    let wasm_bg = await __wbg_get_imports();
+    console.log(wasm_bg);
+    let macroquad = window.importObject;
+    console.log(macroquad);
+    macroquad.env.wbg = {...wasm_bg.wbg, ...macroquad.env.wbg};
+    console.log(macroquad);
+    load("linrays_sb3_bg.wasm");
+    // init();
+</script>
+```
+
 ## adding async to the compiler (Jan 3)
 
 Note: everywhere here `async` refers to my shitty runtime not the normal rust futures system. 

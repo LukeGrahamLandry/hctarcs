@@ -116,6 +116,51 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         }
     }
 
+    if opts.web {
+        let mut cmd = Command::new("cargo");
+        cmd.arg("build");
+        cmd.arg("--release");
+        cmd.arg("--target");
+        cmd.arg("wasm32-unknown-unknown");
+        assert!(cmd.current_dir(&opts.outdir).status()?.success());
+        let mut wasm = opts.outdir.clone();
+        loop {  // Look upwards encase its a workspace
+            wasm.push("target");
+            if wasm.exists() {
+                break;
+            } else {
+                assert!(wasm.pop() && wasm.pop(), "Failed to find target directory. ")
+            }
+        }
+        let mut web_folder = wasm.clone();
+        web_folder.push("web");
+        wasm.push("wasm32-unknown-unknown");
+        wasm.push("release");
+        wasm.push(format!("{name}.wasm"));
+        assert!(wasm.exists(), "File Not Found {wasm:?}");
+
+        create_dir_all(&web_folder)?;
+        let mut old_wasm = web_folder.clone();
+        old_wasm.push(format!("{name}.wasm"));
+        fs::copy(&wasm, old_wasm)?;
+        let mut cmd = Command::new("wasm-bindgen");
+        cmd.arg(wasm).arg("--target").arg("web").arg("--out-dir").arg(&web_folder);
+        let mut bindjs = web_folder.clone();
+        bindjs.push(format!("{name}.js"));
+        assert!(cmd.status()?.success());
+
+        // HACK HACK HACK
+        // https://gist.github.com/profan/f38c9a2f3d8c410ad76b493f76977afe
+        assert_eq!(opts.render, Target::Macroquad);
+        let mut genjs = fs::read_to_string(&bindjs)?;
+        genjs = genjs.replace("import * as __wbg_star0 from 'env';", "");
+        genjs = genjs.replace("let wasm;", "let wasm; export const set_wasm = (w) => wasm = w;");
+        genjs = genjs.replace("imports['env'] = __wbg_star0;", "return imports.wbg;");
+        genjs = genjs.replace("const imports = __wbg_get_imports();", "return __wbg_get_imports();");
+        fs::write(&bindjs, genjs)?;
+
+    }
+
     if opts.run || opts.debug || opts.first_frame_only{
         let mut cmd = Command::new("cargo");
         cmd.arg("run");
@@ -187,7 +232,7 @@ pub struct Cli {
     pub assets: AssetPackaging,
 
     #[arg(long)]
-    pub wasm: bool,
+    pub web: bool,
 
     /// Run for one frame, save a screenshot, and then exit (same as building normally then passing --first-frame-only to the exe)
     #[arg(long)]

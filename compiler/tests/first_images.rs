@@ -7,6 +7,8 @@ use compiler::cli::{Cli, run};
 
 // TODO: move this to a bin?
 // TODO: add a bin that builds web demos
+// TODO: runtime arg for stdin/stdout say/input so can test tres. test api for rust giving it a list of triggers (generic over Msg).
+// TODO: runtime flag for save frame on exit for testing tres
 
 // TODO: recompile the src files as needed
 const my_tests: &[T] = &[

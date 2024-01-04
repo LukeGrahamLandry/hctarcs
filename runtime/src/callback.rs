@@ -7,9 +7,10 @@ use std::hint::black_box;
 use std::mem::{size_of, size_of_val};
 use std::ops::Add;
 use std::pin::{Pin, pin};
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 use crate::{credits, FrameCtx, RenderBackend, ScratchProgram, Trigger, World};
 use crate::sprite::{Sprite, SpriteBase};
+use crate::Instant;
 
 // TODO: try to clean up the concurrency model. Relationship between IoAction, FnFut, and FutOut feels a bit over complicated.
 pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {

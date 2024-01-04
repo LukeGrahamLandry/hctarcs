@@ -1,8 +1,7 @@
-use std::env;
 use std::marker::PhantomData;
 use macroquad::miniquad::window::request_quit;
 use macroquad::prelude::*;
-use crate::{Argb, HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, Line, RenderBackend, RenderHandle, ScratchProgram, Trigger, World};
+use crate::{Argb, args, HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, Line, RenderBackend, RenderHandle, ScratchProgram, Trigger, World};
 use std::ops::{Div, Mul};
 
 pub struct BackendImpl<S: ScratchProgram<Self>>(PhantomData<S>);
@@ -47,7 +46,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
         // TODO: move logic out of backend.
         // TODO: sad allocation noises. I guess you can't slice an OsStr (cstr?)?
         // TODO: sad that i check this every frame
-        let take_screenshot = env::args().any(|arg| &arg == "--first-frame-only");
+        let take_screenshot = args().any(|arg| &arg == "--first-frame-only");
 
         loop {
             // All the draw commands during an event are to the static pen texture.
@@ -68,7 +67,11 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             if take_screenshot {
                 let img = get_screen_data();
                 img.export_png("frame.png");
-                println!("Exiting. Saved first frame at {}/frame.png", env::current_dir().unwrap().to_string_lossy());
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    println!("Exiting. Saved first frame at {}/frame.png", std::env::current_dir().unwrap().to_string_lossy());
+                }
+
                 // TODO: this waits a frame
                 request_quit();
             }
@@ -114,6 +117,11 @@ impl RenderHandle for Handle {
         let font_size = 40;
         let size = measure_text(text, None, font_size, 1.0);
         draw_text(text, x - (size.width / 2.0), y - (size.height / 2.0), font_size as f32, BLACK);
+    }
+
+    // TODO: make this an IoAction instead of a context method so it can finish drawing the current frame.
+    fn save_frame(&mut self, path: &str) {
+        get_screen_data().export_png(path);
     }
 }
 

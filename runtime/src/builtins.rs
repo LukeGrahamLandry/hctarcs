@@ -5,6 +5,7 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
 use std::io::{stdout, Write};
+use std::time::{Instant, SystemTime};
 use crate::backend::RenderBackend;
 use crate::poly::Str;
 use crate::{RenderHandle, ScratchProgram, Sprite};
@@ -135,6 +136,12 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
     pub fn looks_say(&mut self, msg: Str) {
         println!("[SAY] {msg:?}");  // TODO: dont print.
         self.render.say(msg.as_ref(), self.pos());
+    }
+
+    pub fn stop_all(&mut self) {
+        println!("stop all");
+        self.render.save_frame(&format!("scratch_exit_{}.png", SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()));
+        std::process::exit(0);
     }
 
     pub fn control_create_clone_of(&self) {

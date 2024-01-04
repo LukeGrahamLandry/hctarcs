@@ -1,10 +1,15 @@
 #![feature(trait_upcasting)]  // unfortunate that i need nightly
 
 use std::collections::{VecDeque};
-use std::env;
 use std::mem::size_of;
 use std::ops::Add;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
+
+// Yes I know instant already forwards to std
+#[cfg(not(target_arch = "wasm32"))]
+pub use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+pub use instant::Instant;
 
 pub mod sprite;
 pub mod builtins;
@@ -280,7 +285,7 @@ impl ScratchAsset {
 
 // TODO: add project name and author if available
 fn credits() {
-    if env::args().any(|arg| &arg == "--credits") {
+    if args().any(|arg| &arg == "--credits") {
         println!("{}", CREDITS)
     }
 }
@@ -289,3 +294,12 @@ const CREDITS: &str = r#"This program is compiled from a Scratch project using g
 All projects shared on the Scratch website are covered by the Creative Commons Attribution Share-Alike license.
 Scratch is a project of the Scratch Foundation, in collaboration with the Lifelong Kindergarten Group at the MIT Media Lab. It is available for free at https://scratch.mit.edu
 "#;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn args() -> impl Iterator<Item=String> {
+    std::env::args()
+}
+#[cfg(target_arch = "wasm32")]
+pub fn args() -> impl Iterator<Item=String> {
+    vec![].into_iter()
+}

@@ -297,7 +297,7 @@ impl Sprite<Stage, Backend> for {0} {{
                 assert!(self.target.is_singleton);
                 format!("this.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
             }
-            Stmt::Exit => format!("println!(\"stop all\"); std::process::exit(0);\n"),
+            Stmt::Exit => format!("ctx.stop_all()\n"),
             Stmt::WaitSeconds(seconds) => {
                 return RustStmt::IoAction(format!("IoAction::sleep({})", self.emit_expr(seconds, Some(SType::Number))))
             }
