@@ -28,4 +28,8 @@ pub trait RenderHandle {
     fn save_frame(&mut self, _path: &str) {
         todo!("save_frame not implemented on this backend");
     }
+
+    fn pen_clear(&mut self) {
+        todo!("pen_clear")
+    }
 }

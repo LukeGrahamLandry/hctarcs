@@ -68,6 +68,8 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             state: &mut state.state,
             _gfx: gfx,
         };
+
+        // TODO: use run_frame once inspector supported here
         state.world.poll_turbo(&mut handle);
 
         // Update the texture with the new data

@@ -31,6 +31,12 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     Sequential(Vec<IoAction<S, R>>),
 }
 
+// TODO: this can go on FutOut for breakpoints and is zero sized in not(inspect)
+#[cfg(feature = "inspect")]
+pub type DbgId = usize;
+#[cfg(not(feature = "inspect"))]
+pub type DbgId = ();
+
 // This any is very unfortunate
 pub type FnFut<S, R> = dyn FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R>;
 pub type FutOut<S, R> = (IoAction<S, R>, Callback<S, R>);
@@ -43,7 +49,7 @@ pub struct Script<S: ScratchProgram<R>, R: RenderBackend<S>>  {
 // Necessary because closures can't return a reference to themselves.
 pub enum Callback<S: ScratchProgram<R>, R: RenderBackend<S>> {
     /// Resolved. Call this action next.
-    Then(Box<FnFut<S, R>>),
+    Then(Box<FnFut<S, R>>),  // TODO: this could be an ioaction and make everything more consistant
     /// Not yet resolved. Must call the same action again. (ex. body of loop).
     Again,
     /// Fully resolved.

@@ -29,6 +29,7 @@ impl Sprite<Stage, Backend> for {name} {{
     // Grumble grumble object safety...
     fn clone_boxed(&self) -> Box<dyn Sprite<Stage, Backend>> {{ Box::new(self.clone()) }}
 
+    /*
     #[cfg(feature = "inspect")]
     fn visit_vars(&self, consumer: &mut dyn FnMut(&str, runtime::ui::VarBorrow)) {{
         use runtime::ui::VarBorrow as V;
@@ -38,7 +39,8 @@ impl Sprite<Stage, Backend> for {name} {{
     #[cfg(feature = "inspect")]
     fn get_var_mut(&self, name: &str, consumer: &mut dyn FnMut(, runtime::ui::VarBorrowMut)) {{
         use runtime::ui::VarBorrowMut as V;
-        {var_setter}
+        //var_setter TODO
     }}
+    */
 }}
 "#

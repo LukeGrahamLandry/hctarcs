@@ -2936,6 +2936,7 @@ dependencies = [
 name = "runtime"
 version = "0.1.0"
 dependencies = [
+ "egui 0.21.0",
  "egui-macroquad",
  "getrandom",
  "image",

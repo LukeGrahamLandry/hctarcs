@@ -138,10 +138,16 @@ impl<'src> Emit<'src> {
                 }
             ).collect();
 
+
+            let action = if scripts.len() == 1 {
+                format!("{}.done()", script_ioactions[0])
+            } else {
+                format!("IoAction::Concurrent(vec![{}]).done()", script_ioactions.join(","))
+            };
+
             async_handlers.push_str(&format!(
-                "{trigger} => IoAction::Concurrent(vec![{scripts}]).done(),",
+                "{trigger} => {action},",
                 trigger = format_trigger(&self.project, trigger),
-                scripts = script_ioactions.join(",")
             ));
         }
 
@@ -464,6 +470,7 @@ enum RustStmt {
         end_cond: RustValue,
         inc_stmt: String,
     },
+    // TODO: have an AsyncSeq?
 }
 
 impl RustValue {
@@ -521,29 +528,6 @@ impl Display for RustValue {
         f.write_str(&self.text)
     }
 }
-//
-// #[test]
-// fn do_something() {
-//     let something = RustStmt::Block(vec![
-//         RustStmt::Sync(String::from("/* sync work... (first) */")),
-//         RustStmt::IoAction(String::from("IoAction::WaitSecs(1.0)")),
-//         RustStmt::Sync(String::from("/* sync work... (second) */")),
-//         RustStmt::Loop {
-//             init: String::from("let mut i = 0;"),
-//             body: vec![
-//                 RustStmt::Sync(String::from("i -= 1;")),
-//                 RustStmt::Sync(String::from("/* sync work... (body of loop) */")),
-//                 RustStmt::IoAction(String::from("IoAction::WaitSecs(0.1)")),
-//                 RustStmt::Sync(String::from("/* sync work... (more body of loop) */")),
-//             ],
-//             end_cond: RustValue { ty: SType::Bool, text: "i == 0".to_string() },
-//         },
-//         RustStmt::Sync(String::from("/* sync work... (after end of loop)*/")),
-//         RustStmt::IoAction(String::from(r#"IoAction::Ask(String::from("Hello"))"#))
-//     ]);
-//
-//     println!("{}", something.to_action()(IoAction(String::from("IoAction::None"), 0)));
-// }
 
 // Returns a value of type IoAction
 fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
@@ -555,8 +539,31 @@ fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
     // action
     // TODO: figure out how to make ^ work
 
-    let src: Vec<_> = stmts.into_iter().map(|s| s.to_closed_action().0).collect();
-    IoAction(format!("IoAction::Sequential(vec![{}])", src.join(",\n")), 0)
+    let mut pending_sync: Option<String> = None;
+    let mut compressed: Box<dyn FnOnce(IoAction) -> IoAction> = Box::new(|a| a);
+
+    for stmt in stmts {
+        if let Some(src) = stmt.clone().to_sync() {
+            if let Some(old) = &mut pending_sync {
+                *old += &src;
+            } else {
+                pending_sync = Some(src);
+            }
+        } else {
+            if let Some(old) = pending_sync {
+                compressed = Box::new(move |next| RustStmt::Sync(old.clone()).to_action()(stmt.to_action()(next)));
+                pending_sync = None;
+            } else {
+                compressed = Box::new(move |next| stmt.to_action()(next));
+            }
+        }
+    }
+
+    if let Some(old) = pending_sync {
+        compressed(RustStmt::Sync(old).to_closed_action())
+    } else {
+        compressed(IoAction(String::from("IoAction::None"), 0))
+    }
 }
 
 impl RustStmt {
@@ -574,7 +581,10 @@ impl RustStmt {
                     format!("/*{i}*/{CALL_ACTION}{body}.then(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
                 },
                 RustStmt::IoAction(a) => format!("/*{i}*/{a}.append({rest_src})/*{i}*/"),
-                RustStmt::Loop { init, body, end_cond, inc_stmt } => { // TODO: collapse if body.to_sync().is_some()
+                RustStmt::Loop { init, body, end_cond, inc_stmt } => {
+                    // TODO: collapse if body.to_sync().is_some()
+                    // TODO want to collapse if rest_src.to_sync().is_some() so maybe kill ioaction and have this be appening a RustStmt to get another RustStmt
+
                     let body_action = close_stmts(body);
                     format!(r#"/*{i}*/{CALL_ACTION}
                     {init}
@@ -591,10 +601,27 @@ impl RustStmt {
             }, i + 1)
     }
 
+    fn then(self, other: Self) -> Self {
+        // merge if both sync
+        // merge with body if block or end if loop.
+        // add an after slot to loop cause using .then(Box::) is better if the closure doesnt have to allocate.
+        // change strategy depending if a box would need to allocate
+        // still need to handle opaque io actions like sleep. i think sequence is always better than append.
+        todo!()
+    }
+
+    fn to_src(self) -> String {
+        // this will replace to_action.0 above
+        todo!();
+    }
+
+
+
     fn to_closed_action(self) -> IoAction {
         self.to_action()(IoAction(String::from("IoAction::None"), 0))
     }
 
+    // TODO: check version that doesnt require clone
     // TODO: result that returns the original if not?
     /// None if self contains any await points.
     fn to_sync(self) -> Option<String> {

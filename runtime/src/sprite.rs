@@ -4,7 +4,7 @@ use crate::backend::RenderBackend;
 use crate::builtins::FrameCtx;
 use crate::callback::FnFut;
 use crate::{Poly, ScratchProgram};
-use crate::ui::{VarBorrow, VarBorrowMut, VariableBorrow};
+use crate::ui::{VarBorrow, VarBorrowMut};
 
 #[derive(Clone, Debug)]
 pub struct SpriteBase {
@@ -42,6 +42,7 @@ pub struct Argb(pub u32);
 /// Wraps the custom Msg defined by the program and adds some builtin ones that the runtime knows how to construct.
 #[derive(Copy, Clone, Debug)]
 pub enum Trigger<Msg> {
+    UiClearPen,
     FlagClicked,
     Message(Msg),
 }
@@ -68,10 +69,14 @@ pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
     }
 
     #[cfg(feature = "inspect")]
-    fn var(&self, i: usize) -> VarBorrow;
+    fn var(&self, i: usize) -> VarBorrow {
+        VarBorrow::Fail
+    }
 
     #[cfg(feature = "inspect")]  // TODO: alas we're getting to the point of wanting a console scripting language.... if only someone had a nice ast
-    fn var_mut(&self, i: usize) -> VarBorrowMut;
+    fn var_mut(&self, i: usize) -> VarBorrowMut {
+        VarBorrowMut::Fail
+    }
 }
 
 impl Default for SpriteBase {

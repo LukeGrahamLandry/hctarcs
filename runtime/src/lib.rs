@@ -26,7 +26,6 @@ pub use builtins::*;
 pub use poly::*;
 pub use backend::*;
 pub use callback::*;
-use crate::ui::VariableBorrow;
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Debug + Copy + 'static;
@@ -50,9 +49,12 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     bases: VecDeque<SpriteBase>,
     custom: VecDeque<Box<dyn Sprite<S, R>>>,
     globals: S::Globals,
-    _messages: VecDeque<S::Msg>,
     scripts: Vec<Script<S, R>>,
     last_ask_id: usize,  // TODO: non-blocking input that increments this
+    pub mode: RunMode,
+    events: VecDeque<SEvent>,
+    pub futs_this_frame: usize, // Inspect Only. TODO: graph
+
 }
 
 // TODO: make the rendering backend generic over the async backend so you could drop in replace a real async runtime?
@@ -69,10 +71,20 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             bases: vec![SpriteBase::default(); custom.len()].into(),
             custom: custom.into(),
             globals,
-            _messages: VecDeque::new(),
             scripts: vec![],
             last_ask_id: 0,
+            mode: RunMode::Turbo,  // TODO: pass default on cli for when not inspect
+            events: Default::default(),
+            futs_this_frame: 0,
         }
+    }
+
+    pub fn restart(&mut self) {
+        let mode = self.mode;
+        *self = Self::new();
+        self.mode = mode;
+        self.events.push_back(SEvent::UiClearPen);
+        self.broadcast_toplevel_async(Trigger::FlagClicked);
     }
 
     pub fn broadcast(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
@@ -119,6 +131,28 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         }
     }
 
+    pub fn run_frame(&mut self, render: &mut R::Handle<'_>) {
+        self.futs_this_frame = 0;
+        for e in self.events.drain(0..) {
+            match e {
+                SEvent::UiClearPen => render.pen_clear(),
+            }
+        }
+
+        match self.mode {
+            RunMode::Turbo => self.poll_turbo(render),
+            RunMode::Compat => {
+                self.poll(render);
+            }
+            RunMode::Manual(req) => {
+                if req {
+                    self.poll(render);
+                    self.mode = RunMode::Manual(false);
+                }
+            }
+        }
+    }
+
     // TODO: this is unfortunate: i imagine getting the time is slow as fuck. can i have like waker thingy in another thread?
     /// Polls as many times as possible within one frame or until all scripts are waiting on timers.
     pub fn poll_turbo(&mut self, render: &mut R::Handle<'_>) {
@@ -143,6 +177,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         }
     }
 
+    // TODO: wrong! each script needs to be pushing to its own stack. scripts should be in a Concurrent(...)
     // TODO: all this async stuff should really go in callback cause that's kinda empty. maybe rename that world and try to get to mostly empty lib file.
     // TODO: this should not return while executing a custom block with "run without screen refresh"
     // TODO: compiler warning if you sleep in a "run without screen refresh" block
@@ -158,6 +193,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             // (continue) when future resolved and want to pop the next immediately.
             loop {  // TODO: replace the body of the loop with a method returning enum[made_progress, return] (true, false)=ScriptFinished   (true, false)=ProgressYield   (false, true)=WaitingYield (false, false)=unreachable
                 // println!("{:?}\n=======", c.next);
+
+                #[cfg(feature = "inspect")]
+                {
+                    self.futs_this_frame += 1;
+                }
 
                 let current = c.next.pop();
                 // println!("{current:?}");
@@ -269,6 +309,13 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum RunMode {
+    Turbo,
+    Compat,
+    Manual(bool),
+}
+
 // TODO: UNUSED thus far
 #[allow(dead_code)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -318,4 +365,8 @@ pub fn args() -> impl Iterator<Item=String> {
 #[cfg(target_arch = "wasm32")]
 pub fn args() -> impl Iterator<Item=String> {
     vec![].into_iter()
+}
+
+enum SEvent {
+    UiClearPen
 }

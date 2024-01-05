@@ -14,7 +14,8 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
     type Handle<'a> = Handle;
 
     fn run() {
-        let (window_width, window_height) = ((HALF_SCREEN_WIDTH * 2.0) as i32, (HALF_SCREEN_HEIGHT * 2.0) as i32);
+        // TODO: resizable so debugger is less painful
+        let (window_width, window_height) = ((HALF_SCREEN_WIDTH * 2.0) as i32 + 400, (HALF_SCREEN_HEIGHT * 2.0) as i32 + 200);
         macroquad::Window::from_config(Conf {
             window_title: "Hctarcs: macroquad".to_string(),
             window_width,
@@ -59,11 +60,14 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
 
             // All the draw commands during an event are to the static pen texture.
             set_camera(&pen_camera);
-            world.poll_turbo(&mut handle);
+            world.run_frame(&mut handle);
             set_default_camera();
 
 
-            clear_background(WHITE);
+            clear_background(GRAY);
+            // TODO: dynamic scratch window size and scale
+            draw_rectangle(0.0, 0.0, (HALF_SCREEN_WIDTH * 2.0) as f32, (HALF_SCREEN_HEIGHT * 2.0) as f32, WHITE);
+
             draw_texture(pen.texture,0.0, 0.0, WHITE);
             for sprite in &world.bases {
                 // TODO: fix wierd coordinate space
@@ -86,7 +90,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             }
 
             #[cfg(feature = "inspect")]
-            debugger.frame(&world);
+            debugger.frame(&mut world);
 
             next_frame().await;
         }
@@ -135,6 +139,10 @@ impl RenderHandle for Handle {
     // TODO: make this an IoAction instead of a context method so it can finish drawing the current frame.
     fn save_frame(&mut self, path: &str) {
         get_screen_data().export_png(path);
+    }
+
+    fn pen_clear(&mut self) {
+        clear_background(WHITE);
     }
 }
 

@@ -1,5 +1,18 @@
 
-## turning on the async
+## inspect ui (Jan 5)
+
+want to be able to clear the pen. 
+was thinking just pass a Handle in, but then macroquad needs to be set to the pen texture but that's not where iwant to draw the ui to. 
+current solution is new concept of events which are like triggers but handled by the world 
+instead of sent to all sprites and then just process those every frame when you're in the right context. 
+maybe should use those for start/stop/reset too and pass them out instead of getting a mutable world?
+but then im just adding a bunch of indirection. somehow ive accidentally made the most hyper object-oriented program. 
+like this is DIY dynamic dispatch over the render backend because i just need to adjust timing. 
+the ui could return a closure for the action it wants to do next frame i guess.
+
+## turning on the async (Jan 4)
+
+so really it should just be a little tweak in the compiler to emit async entry points and then my basic program should work. 
 
 confusing thing with my wait. 
 problem was that my sleep(seconds) function was sync.
