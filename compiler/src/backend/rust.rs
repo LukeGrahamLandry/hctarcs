@@ -528,11 +528,15 @@ impl Display for RustValue {
 // Returns a value of type IoAction
 fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
     // TODO: collapse if all are sync
-    let mut action = IoAction(String::from("IoAction::None"), 0);
-    for stmt in collapse_if_sync(stmts).into_iter() {
-        action = stmt.to_action()(action);
-    }
-    action
+    // let mut action = IoAction(String::from("IoAction::None"), 0);
+    // for stmt in collapse_if_sync(stmts).into_iter().rev() {  // TODO: is this rev or not?
+    //     action = stmt.to_action()(action);
+    // }
+    // action
+    // TODO: figure out how to make ^ work
+
+    let src: Vec<_> = stmts.into_iter().map(|s| s.to_closed_action().0).collect();
+    IoAction(format!("IoAction::Sequential(vec![{}])", src.join(",\n")), 0)
 }
 
 impl RustStmt {

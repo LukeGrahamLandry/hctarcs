@@ -6,6 +6,14 @@ problem was that my sleep(seconds) function was sync.
 but actually it was from_seconds(secs as u64) rounding down 0.5 to 0. 
 
 next: loops dont terminate because im creating the counter in the same closure as the body. 
+then still broken, fixed by moving increment into same real rust block as the if of the loop. 
+i think actual problem was that close_stmts had a .rev() from when i was using .then i guess 
+so it was doing things in the wrong order maybe? but less indirection better, means fewer things need to close over the loop counter. 
+tho actually now its resetting my pos to 0,0 at the end which should be the first thing so clearly 
+my ioaction chain construction in the compiler isn't working. 
+just gonna use seq(vec!) for close_stmts for now. TODO: figure it out and profile to see if it's faster the other way. 
+
+now why am i not rendering anything. aa! default size_frac was 0. 
 
 ## templates
 

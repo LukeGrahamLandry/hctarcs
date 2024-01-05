@@ -5,7 +5,7 @@ use crate::builtins::FrameCtx;
 use crate::callback::FnFut;
 use crate::ScratchProgram;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct SpriteBase {
     pub(crate) _uid: usize,  // TODO: increment on each clone for safety checking callback targets
     pub x: f64,
@@ -60,4 +60,20 @@ pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.
     // You can't just impl here and have where Self: Clone cause you can't call it on the trait object.
     fn clone_boxed(&self) -> Box<dyn Sprite<S, R>>;
+}
+
+impl Default for SpriteBase {
+    fn default() -> Self {
+        Self {
+            _uid: 0,
+            x: 0.0,
+            y: 0.0,
+            direction: 0.0,
+            speed: 0.0,
+            pen: Default::default(),
+            last_answer: "".to_string(),
+            costume: 0,
+            size_frac: 1.0,
+        }
+    }
 }

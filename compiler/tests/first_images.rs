@@ -23,18 +23,23 @@ const vendor_tests: &[T] = &[
     T { name: "linrays", deny_async: true, deny_poly: true },
     ];
 
+const temp_tests: &[T] = &[
+    T { name: "async", deny_async: false, deny_poly: false },
+];
+
+
 #[test]
 fn first_images() -> anyhow::Result<()> {
     env::set_current_dir("..")?;
     println!("{:?}", env::current_dir());
 
     let (w, h) = (240usize, 180usize);
-    let mut image = Image::new((w * my_tests.len().max(vendor_tests.len())) as u32, (h * 2) as u32, Rgb::black());
+    let mut image = Image::new((w * my_tests.len().max(vendor_tests.len())) as u32, (h * 3) as u32, Rgb::black());
 
     // TODO: threads? most time is spent waiting on cargo
     // TODO: just log failures in the loop so you can see them all
     // TODO: run fmt if a test fails
-    for (y, tests) in [my_tests, vendor_tests].iter().enumerate() {
+    for (y, tests) in [my_tests, vendor_tests, temp_tests].iter().enumerate() {
         for (x, test) in tests.iter().enumerate() {
             run(test.opts())?;
 
