@@ -1,4 +1,12 @@
 
+## turning on the async
+
+confusing thing with my wait. 
+problem was that my sleep(seconds) function was sync.
+but actually it was from_seconds(secs as u64) rounding down 0.5 to 0. 
+
+next: loops dont terminate because im creating the counter in the same closure as the body. 
+
 ## templates
 
 The compiler needs several string templates for special files and its getting pretty ugly to have them as constants in the src. 

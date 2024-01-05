@@ -51,7 +51,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
         loop {
             // All the draw commands during an event are to the static pen texture.
             set_camera(&pen_camera);
-            world.poll_turbo(&mut handle);
+            world.poll(&mut handle);  // TODO _turbo
             set_default_camera();
 
             clear_background(WHITE);

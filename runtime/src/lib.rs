@@ -1,6 +1,7 @@
 #![feature(trait_upcasting)]  // unfortunate that i need nightly
 
 use std::collections::{VecDeque};
+use std::fmt::Debug;
 use std::mem::size_of;
 use std::ops::Add;
 use std::time::{Duration};
@@ -24,7 +25,7 @@ pub use backend::*;
 pub use callback::*;
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
-    type Msg: Copy + 'static;
+    type Msg: Debug + Copy + 'static;
     type Globals;
     type UnitIfNoAsync;  // TODO: use const generics?  // TODO: remove if im just forwarding anyway
 
@@ -140,8 +141,8 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         }
 
         // TODO: dont print every frame
-        #[cfg(feature = "profiling")]
-        println!("Futures handled: {}", self.profile_fut_count);
+        // #[cfg(feature = "profiling")]
+        // println!("Futures handled: {}", self.profile_fut_count);
     }
 
     // TODO: all this async stuff should really go in callback cause that's kinda empty. maybe rename that world and try to get to mostly empty lib file.
@@ -161,7 +162,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                 #[cfg(feature = "profiling")]
                 { self.profile_fut_count += 1; }
 
-                match c.next.pop() {  // Take the next thing from the stack of futures we're waiting on.
+                // println!("{:?}\n=======", c.next);
+
+                let current = c.next.pop();
+                // println!("{current:?}");
+                match current {  // Take the next thing from the stack of futures we're waiting on.
                     None => {  // If its empty, this script is finished.
                         made_progress = true;
                         return /*from closure*/ false
@@ -206,8 +211,20 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             continue
                         }
+                        IoAction::sleep(seconds) => {
+                            if seconds > 0.0 {
+                                // Note: not from_seconds because dont want to round down to zero
+                                let replace = IoAction::WaitUntil(Instant::now().add(Duration::from_millis((seconds * 1000.0)as u64)));
+                                made_progress = true;
+                                c.next.push(replace);
+                                break
+                            } else {  // TODO: does scratch yield for sleep(0)?
+                                continue
+                            }
+                        }
                         IoAction::WaitUntil(time) => {
-                            if Instant::now() < time {  // Still waiting, no progress
+                            let now = Instant::now();
+                            if now <= time {  // Still waiting, no progress
                                 c.next.push(IoAction::WaitUntil(time));
                                 break
                             } else {
@@ -248,6 +265,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                 { unreachable!("end of loop. use explicit continue cause im afraid of forgetting") }
             }
 
+            // println!("Yield");
             return /*from closure*/  true
         });
 

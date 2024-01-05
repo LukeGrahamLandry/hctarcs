@@ -423,7 +423,7 @@ impl<'src> Emit<'src> {
     }
 }
 
-const CALL_ACTION: &str = "IoAction::Call(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this);\n";
+const CALL_ACTION: &str = "IoAction::Call(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this); dbg!();\n";
 
 // TODO: this could also track borrow vs owned
 #[derive(Clone, Debug)]
@@ -551,12 +551,17 @@ impl RustStmt {
                 RustStmt::Loop { init, body, end_cond } => { // TODO: collapse if body.to_sync().is_some()
                     let body_action = close_stmts(body);
                     format!(r#"/*{i}*/{CALL_ACTION}
+                    dbg!("init loop");
                     {init}
+                    {CALL_ACTION}
                     if {end_cond} {{
+                        dbg!("done loop");
                         {rest_src}.done()
                     }} else {{
+                        dbg!("body loop", i);
                         {body_action}.again()
                     }}
+                }})).done()
                 }})/*{i}*/)"#)
                 },
             }, i + 1)
@@ -577,7 +582,7 @@ impl RustStmt {
                             a.push_str(&b);
                             Some(a)
                         },
-                        _ => unreachable!()
+                        _ => None,
                     }).flatten()
             };
 

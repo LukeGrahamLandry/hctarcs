@@ -3,6 +3,7 @@
 #![allow(unused)]
 use std::any::Any;
 use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
 use std::hint::black_box;
 use std::mem::{size_of, size_of_val};
 use std::ops::Add;
@@ -14,6 +15,7 @@ use crate::Instant;
 
 // TODO: try to clean up the concurrency model. Relationship between IoAction, FnFut, and FutOut feels a bit over complicated.
 pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
+    sleep(f64),
     WaitUntil(Instant),
     // TODO: compiler doesnt emit these, it calls the context method.
     // TODO: its awkward that I have this fusion between requests and waiting for requests
@@ -62,14 +64,6 @@ pub const fn assert_nonzero_sized<T>(){
 }
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
-    pub fn sleep(seconds: f64) -> Self {
-        if seconds > 0.0 {
-            IoAction::WaitUntil(Instant::now().add(Duration::from_secs(seconds as u64)))
-        } else {  // TODO: does scratch yield for sleep(0)?
-            IoAction::None
-        }
-    }
-
     // TODO: hefty type signature
     pub fn then<F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
         assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
@@ -115,4 +109,22 @@ macro_rules! nosuspend {
     ($call:expr) => {{
         let _: () = $call;
     }};
+}
+
+impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IoAction::WaitUntil(time) => write!(f, "IoAction::WaitUntil({time:?})"),
+            IoAction::Ask(q) => write!(f, "IoAction::Ask({q:?})"),
+            IoAction::WaitForAsk(id) => write!(f, "IoAction::WaitForAsk({id:?})"),
+            IoAction::BroadcastWait(msg) => write!(f, "IoAction::BroadcastWait({msg:?})"),
+            IoAction::Call(_) => write!(f, "IoAction::Call(FnFut...)"),
+            IoAction::CloneMyself => write!(f, "IoAction::CloneMyself"),
+            IoAction::LoopYield => write!(f, "IoAction::LoopYield"),
+            IoAction::None => write!(f, "IoAction::None)"),
+            IoAction::Concurrent(c) => write!(f, "IoAction::Concurrent({c:?})"),
+            IoAction::Sequential(c) => write!(f, "IoAction::Sequential({c:?})"),
+            IoAction::sleep(s) => write!(f, "IoAction::StartSleep({s})"),
+        }
+    }
 }
