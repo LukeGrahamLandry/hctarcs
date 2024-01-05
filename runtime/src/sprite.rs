@@ -3,7 +3,8 @@ use std::fmt::Debug;
 use crate::backend::RenderBackend;
 use crate::builtins::FrameCtx;
 use crate::callback::FnFut;
-use crate::ScratchProgram;
+use crate::{Poly, ScratchProgram};
+use crate::ui::{VarBorrow, VarBorrowMut, VariableBorrow};
 
 #[derive(Clone, Debug)]
 pub struct SpriteBase {
@@ -60,6 +61,17 @@ pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.
     // You can't just impl here and have where Self: Clone cause you can't call it on the trait object.
     fn clone_boxed(&self) -> Box<dyn Sprite<S, R>>;
+
+    #[cfg(feature = "inspect")]
+    fn get_var_names(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    #[cfg(feature = "inspect")]
+    fn var(&self, i: usize) -> VarBorrow;
+
+    #[cfg(feature = "inspect")]  // TODO: alas we're getting to the point of wanting a console scripting language.... if only someone had a nice ast
+    fn var_mut(&self, i: usize) -> VarBorrowMut;
 }
 
 impl Default for SpriteBase {

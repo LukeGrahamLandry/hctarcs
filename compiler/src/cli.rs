@@ -162,9 +162,19 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         fs::write(&index, data)?;
 
         let macroquad = match opts.get_template_path("mq_js_bundle") {
-            None => ureq::get("https://raw.githubusercontent.com/not-fl3/macroquad/master/js/mq_js_bundle.js")
-                .set("User-Agent", &opts.user_agent) // TODO: can u get the src from cargo instead of magic url? cause what if theres a breaking change
-                .call()?.into_string()?,
+            None => {
+                // TODO: can u get the src from cargo instead of magic url? cause what if theres a breaking change
+                let urls = &[
+                    "https://raw.githubusercontent.com/not-fl3/macroquad/1158aaf5c4f9fc89a91edd212ef6dfc7777e1395/js/mq_js_bundle.js",
+                    // "https://raw.githubusercontent.com/not-fl3/sapp-jsutils/4aa083662bfea725bf6e30453c009c6d02d667db/js/sapp_jsutils.js",
+                    "https://raw.githubusercontent.com/optozorax/quad-url/368519c488aac55b73d3f29ed99c1afb9091d989/js/quad-url.js",
+                ];
+                let mut text = String::new();
+                for url in urls {
+                    text += &format!("\n//\n//{url}\n//\n{}", ureq::get(url).call()?.into_string()?);
+                }
+                text
+            },
             Some(s) => s.to_string()
         };
 

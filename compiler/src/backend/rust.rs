@@ -89,9 +89,21 @@ struct Emit<'src> {
 
 impl<'src> Emit<'src> {
     fn emit(&mut self) -> String {
-        let fields: String = self.target.fields.iter().map(|&v| {
-            format!("   {}: {},\n", self.project.var_names[v.0], self.inferred_type_name(v))
-        }).collect();
+        let mut visit_vars = String::new();
+        let mut fields = String::new();
+        for &v in &self.target.fields {
+            let name = &self.project.var_names[v.0];
+            fields += &format!("   {}: {},\n", name, self.inferred_type_name(v));
+            let constructor= &match self.inferred_type(v) {
+                SType::Number => format!("Num("),
+                SType::Bool => format!("Bool("),
+                SType::Str => format!("Str(&"),
+                SType::ListPoly => format!("List(&"),
+                SType::Poly => format!("Poly(&"),
+            };
+            visit_vars += &format!("consumer(\"{}\", V::{constructor}self.{name}));", name.escape_default());
+        }
+
         let procs: String = self.target.procedures.iter().map(|t| self.emit_custom_proc(t)).collect();
 
         // For each entry point, push a RustStmt to target[Trigger]
@@ -141,7 +153,8 @@ impl<'src> Emit<'src> {
             sync_handlers="",
             procs=procs,
             fields=fields,
-            async_handlers=async_handlers
+            async_handlers=async_handlers,
+            visit_vars=visit_vars
         )
     }
 
@@ -422,9 +435,16 @@ impl<'src> Emit<'src> {
             Some(t) => type_name(t.clone()),
         }
     }
+    fn inferred_type(&self, v: VarId) -> SType {
+        match &self.project.expected_types[v.0] {
+            None => SType::Poly,
+            Some(t) => *t,
+        }
+    }
+
 }
 
-const CALL_ACTION: &str = "IoAction::Call(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this); dbg!();\n";
+const CALL_ACTION: &str = "IoAction::Call(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this);\n";
 
 // TODO: this could also track borrow vs owned
 #[derive(Clone, Debug)]
@@ -557,14 +577,11 @@ impl RustStmt {
                 RustStmt::Loop { init, body, end_cond, inc_stmt } => { // TODO: collapse if body.to_sync().is_some()
                     let body_action = close_stmts(body);
                     format!(r#"/*{i}*/{CALL_ACTION}
-                    dbg!("init loop");
                     {init}
                     {CALL_ACTION}
                     if {end_cond} {{
-                        dbg!("done loop");
                         {rest_src}.done()
                     }} else {{
-                        dbg!("body loop", i);
                         {inc_stmt}
                         {body_action}.again()
                     }}

@@ -15,6 +15,11 @@ just gonna use seq(vec!) for close_stmts for now. TODO: figure it out and profil
 
 now why am i not rendering anything. aa! default size_frac was 0. 
 
+TODO: implement wait in scratch-compiler so i can try it 
+TODO: better debug mode with toggles
+TODO: non-turbo mode cause it turns out you want that for debugging 
+TODO: really what i want is break points. fuck. this is gonna be hard. 
+
 ## templates
 
 The compiler needs several string templates for special files and its getting pretty ugly to have them as constants in the src. 

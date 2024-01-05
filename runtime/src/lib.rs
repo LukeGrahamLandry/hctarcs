@@ -18,11 +18,15 @@ pub mod callback;
 pub mod poly;
 pub mod backend;
 
+#[cfg(feature = "inspect")]
+pub mod ui;
+
 pub use sprite::*;
 pub use builtins::*;
 pub use poly::*;
 pub use backend::*;
 pub use callback::*;
+use crate::ui::VariableBorrow;
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Debug + Copy + 'static;
@@ -49,7 +53,6 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     _messages: VecDeque<S::Msg>,
     scripts: Vec<Script<S, R>>,
     last_ask_id: usize,  // TODO: non-blocking input that increments this
-    pub profile_fut_count: usize,
 }
 
 // TODO: make the rendering backend generic over the async backend so you could drop in replace a real async runtime?
@@ -69,7 +72,6 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             _messages: VecDeque::new(),
             scripts: vec![],
             last_ask_id: 0,
-            profile_fut_count: 0,
         }
     }
 
@@ -139,10 +141,6 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                 break
             }
         }
-
-        // TODO: dont print every frame
-        // #[cfg(feature = "profiling")]
-        // println!("Futures handled: {}", self.profile_fut_count);
     }
 
     // TODO: all this async stuff should really go in callback cause that's kinda empty. maybe rename that world and try to get to mostly empty lib file.
@@ -159,9 +157,6 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             // (break) to retain and yield the script until next poll.
             // (continue) when future resolved and want to pop the next immediately.
             loop {  // TODO: replace the body of the loop with a method returning enum[made_progress, return] (true, false)=ScriptFinished   (true, false)=ProgressYield   (false, true)=WaitingYield (false, false)=unreachable
-                #[cfg(feature = "profiling")]
-                { self.profile_fut_count += 1; }
-
                 // println!("{:?}\n=======", c.next);
 
                 let current = c.next.pop();
@@ -183,7 +178,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             };
 
                             let (action, next) = f(ctx, custom);
-                            println!("Returned {action:?} {next:?}");
+                            // println!("Returned {action:?} {next:?}");
 
                             // Its a stack, so push the next handler and then push the action that must resolve before calling it.
                             match next {

@@ -4,6 +4,7 @@ r#"<html><head><style>
     body {{ text-align: center }}
     canvas {{ overflow: hidden; outline: none; display: inline-block; }}
 </style></head><body>
+<!-- <button>Click here to start</button> -->
 <!-- `glcanvas` is a magic id mq_js_bundle looks for -->
 <canvas id="glcanvas" tabindex='1' width="480" height="360"></canvas>
 <script src="{mq_js_bundle_url}"></script>
@@ -25,5 +26,13 @@ r#"<html><head><style>
         version: "0.2.0",
         name: "wbg",
     }});
+
     load("{name}_bg.wasm");
+/*
+    document.getElementById("start", () => {{
+        document.getElementById("start").hidden = true;
+        document.getElementById("glcanvas").hidden = false;
+
+    }})
+*/
 </script></body></html>"#
