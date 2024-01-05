@@ -99,6 +99,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
     }
 }
 
+// TODO: its unfortunate that this allocates
 pub fn forward_to_sync<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R> + Sized>(msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
     Box::new(move |ctx, this| {
         let this: &mut O = ctx.trusted_cast(this);
@@ -107,3 +108,11 @@ pub fn forward_to_sync<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R
     })
 }
 
+// TODO: i'd rather the syntax be list of stmts semicolon terminated with optional last than current where blocks need to be { wrapped }
+// Comptime assert that a function call is synchronous. Just a sanity check for the compiler.
+#[macro_export]
+macro_rules! nosuspend {
+    ($call:expr) => {{
+        let _: () = $call;
+    }};
+}

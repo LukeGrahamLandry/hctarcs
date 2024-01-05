@@ -93,6 +93,8 @@ impl<'src> Emit<'src> {
             format!("   {}: {},\n", self.project.var_names[v.0], self.inferred_type_name(v))
         }).collect();
         let procs: String = self.target.procedures.iter().map(|t| self.emit_custom_proc(t)).collect();
+
+        // For each entry point, push a RustStmt to target[Trigger]
         for func in &self.target.functions {
             let body = self.emit_block(&func.body);
             // TODO: idk why im in a functional mood rn
@@ -105,12 +107,42 @@ impl<'src> Emit<'src> {
             };
             self.triggers.insert(func.start.clone(), handler);
         }
-        let handlers: String = self.triggers.iter().map(|(trigger, body)| {
-            format!("{} => {{{}}},\n", format_trigger(&self.project, trigger), RustStmt::Block(body.clone()).to_sync().unwrap())
-        }).collect();
+
+        let mut async_handlers = String::new();
+
+        for (trigger, scripts) in &self.triggers {
+            let script_ioactions: Vec<String> = scripts.iter().map(|script|
+                match script.clone().to_sync() {
+                    None => script.clone().to_closed_action().to_string(),
+                    Some(src) => format!(r#"
+                    IoAction::Call(Box::new(move |ctx, this| {{
+                        let this: &mut Self = ctx.trusted_cast(this);
+                        nosuspend!({{
+                        {src}
+                        }});
+                        IoAction::None.done()
+                    }}))
+        "#),
+                }
+            ).collect();
+
+            async_handlers.push_str(&format!(
+                "{trigger} => IoAction::Concurrent(vec![{scripts}]).done(),",
+                trigger = format_trigger(&self.project, trigger),
+                scripts = script_ioactions.join(",")
+            ));
+        }
+
         // TODO: wrong? var defaults are in the json
         // TODO: override?
-        template!("../data/sprite_body", name=self.target.name, handlers=handlers, procs=procs, fields=fields)
+        template!(
+            "../data/sprite_body",
+            name=self.target.name,
+            sync_handlers="",
+            procs=procs,
+            fields=fields,
+            async_handlers=async_handlers
+        )
     }
 
     fn emit_custom_proc(&mut self, t: &'src Proc) -> String{
@@ -198,7 +230,7 @@ impl<'src> Emit<'src> {
                 if is_async {  // TODO: untested
                     return RustStmt::IoAction(format!("/*untested*/{CALL_ACTION}{callexpr}))"));
                 } else {
-                    format!("{callexpr}; /*nosuspend*/\n")
+                    format!("nosuspend!({callexpr});\n")
                 }
             }
             Stmt::ListSet(s, v, i, item) => {

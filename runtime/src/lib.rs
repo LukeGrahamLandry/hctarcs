@@ -232,7 +232,15 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                                 continue
                             }
                         }
-                        _ => todo!(),
+
+                        IoAction::BroadcastWait(_) => todo!(),
+                        IoAction::CloneMyself => todo!(),
+                        IoAction::Concurrent(actions) => {
+                            // TODO: this is very wrong but works for now. if i dont guarantee execution order this isn't technically invalid.
+                            c.next.extend(actions.into_iter());
+                            made_progress = true;
+                            continue
+                        }
                     }
                 }
 

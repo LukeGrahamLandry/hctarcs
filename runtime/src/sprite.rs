@@ -46,12 +46,12 @@ pub enum Trigger<Msg> {
 }
 
 pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
-    // Sync projects must override this one.
+    /// Sync projects may override this one but world will not call it directly.
     fn receive(&mut self, _ctx: &mut FrameCtx<S, R>, _msg: Trigger<S::Msg>) {
-
+        // Implementation is left as an exercise for the compiler...
     }
 
-    // Async projects must override this one.
+    // TODO: this is not an async function; it returns an async function. that's a strange choice but it makes it easier to call.
     fn receive_async(&self, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
         // TODO: can't do a default impl that forwards to receive because of confusing Any/dyn/?Sized things
         unreachable!("Compiler must impl receive_async->forward_to_sync")
