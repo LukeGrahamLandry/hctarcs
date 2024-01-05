@@ -192,6 +192,7 @@ impl<'src> Emit<'src> {
                         self.emit_block(body)
                     ],
                     end_cond: self.emit_expr(cond, Some(SType::Bool)),
+                    inc_stmt: "".to_string(),
                 };
             }
             Stmt::IfElse(cond, body, body2) => {
@@ -203,10 +204,10 @@ impl<'src> Emit<'src> {
                 return RustStmt::Loop {  // TODO: check edge cases of the as usize in scratch
                     init: format!("let mut i = 0usize; let end = {} as usize;", self.emit_expr(times, Some(SType::Number))),
                     body: vec![
-                        RustStmt::sync(format!("i += 1;")),
                         self.emit_block(body)
                     ],
                     end_cond: rval(SType::Bool, "i >= end"),
+                    inc_stmt: format!("i += 1;"),
                 };
             }
             Stmt::RepeatTimesCapture(times, body, v, s) => {
@@ -217,10 +218,10 @@ impl<'src> Emit<'src> {
                 return RustStmt::Loop {
                     init: format!("let mut i = 1.0f64; let end: f64 = {};", self.emit_expr(times, Some(SType::Number))),
                     body: vec![
-                        RustStmt::sync(format!("{} = {iter_expr}; i += 1.0;", self.ref_var(*s, *v, true))),
                         self.emit_block(body)
                     ],
                     end_cond: rval(SType::Bool, "i > end"),
+                    inc_stmt: format!("{} = {iter_expr}; i += 1.0;", self.ref_var(*s, *v, true)),
                 };
             }
             Stmt::StopScript => "return;\n".to_string(),  // TODO: how does this interact with async
@@ -441,6 +442,7 @@ enum RustStmt {
         init: String,
         body: Vec<RustStmt>,
         end_cond: RustValue,
+        inc_stmt: String,
     },
 }
 
@@ -527,7 +529,7 @@ impl Display for RustValue {
 fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
     // TODO: collapse if all are sync
     let mut action = IoAction(String::from("IoAction::None"), 0);
-    for stmt in collapse_if_sync(stmts).into_iter().rev() {
+    for stmt in collapse_if_sync(stmts).into_iter() {
         action = stmt.to_action()(action);
     }
     action
@@ -548,7 +550,7 @@ impl RustStmt {
                     format!("/*{i}*/{CALL_ACTION}{body}.then(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
                 },
                 RustStmt::IoAction(a) => format!("/*{i}*/{a}.append({rest_src})/*{i}*/"),
-                RustStmt::Loop { init, body, end_cond } => { // TODO: collapse if body.to_sync().is_some()
+                RustStmt::Loop { init, body, end_cond, inc_stmt } => { // TODO: collapse if body.to_sync().is_some()
                     let body_action = close_stmts(body);
                     format!(r#"/*{i}*/{CALL_ACTION}
                     dbg!("init loop");
@@ -559,6 +561,7 @@ impl RustStmt {
                         {rest_src}.done()
                     }} else {{
                         dbg!("body loop", i);
+                        {inc_stmt}
                         {body_action}.again()
                     }}
                 }})).done()
@@ -590,10 +593,10 @@ impl RustStmt {
             RustStmt::Sync(s) => Some(s),
             RustStmt::Block(stmts) => sync_block(stmts),
             RustStmt::IoAction(_) => None,
-            RustStmt::Loop { init, body, end_cond } => {
+            RustStmt::Loop { init, body, end_cond, inc_stmt } => {
                 match sync_block(body) {
                     None => None,
-                    Some(body) => Some(format!("{init}\n while !({end_cond}) {{ {body} }}"))
+                    Some(body) => Some(format!("{init}\n while !({end_cond}) {{ {inc_stmt} {body} }}"))
                 }
             }
         }

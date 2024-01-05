@@ -183,6 +183,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             };
 
                             let (action, next) = f(ctx, custom);
+                            println!("Returned {action:?} {next:?}");
 
                             // Its a stack, so push the next handler and then push the action that must resolve before calling it.
                             match next {

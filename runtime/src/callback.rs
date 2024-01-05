@@ -121,10 +121,22 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
             IoAction::Call(_) => write!(f, "IoAction::Call(FnFut...)"),
             IoAction::CloneMyself => write!(f, "IoAction::CloneMyself"),
             IoAction::LoopYield => write!(f, "IoAction::LoopYield"),
-            IoAction::None => write!(f, "IoAction::None)"),
+            IoAction::None => write!(f, "IoAction::None"),
             IoAction::Concurrent(c) => write!(f, "IoAction::Concurrent({c:?})"),
             IoAction::Sequential(c) => write!(f, "IoAction::Sequential({c:?})"),
             IoAction::sleep(s) => write!(f, "IoAction::StartSleep({s})"),
         }
     }
 }
+
+impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for Callback<S, R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Callback::Then(s) =>write!(f, "Callback::Then(FnFut...)"),
+            Callback::Again => write!(f, "Callback::Again"),
+            Callback::Done => write!(f, "Callback::Done"),
+        }
+    }
+}
+
+
