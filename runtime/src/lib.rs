@@ -231,6 +231,33 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             break
                         }
+                        IoAction::UserFnCall(f) => {
+                            c.next.push(IoAction::CallMarker);
+                            let (action, next) = f(ctx, custom);
+                            assert!(matches!(next, Callback::Done));
+                            c.next.push(action);
+                            made_progress = true;
+                            break
+                        }
+                        IoAction::CallMarker => {
+                            continue
+                        }
+                        IoAction::StopCurrentScript => {
+                            made_progress = true;
+                            loop {
+                                match c.next.pop() {
+                                    None => return false,
+                                    Some(a) => {
+                                        if let IoAction::CallMarker = a {
+                                            break
+                                        } else {
+                                            // Continue
+                                        }
+                                    }
+                                }
+                            }
+                            break
+                        }
 
                         // TODO: this might be waiting two frames since fn return already yields so maybe should be treated as IoAction::None
                         IoAction::LoopYield => { // Yields instantly resolve
@@ -321,15 +348,14 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             stop_all = true;
                             return false;
                         }
-                        IoAction::StopCurrentScript => {
-                            made_progress = true;
-                            return false;
-                        }
                         IoAction::ConcurrentScripts(scripts) => {
+                            assert_eq!(scripts.len(), 1, "temp debugging");
                             for script in scripts {
                                 assert_eq!(script.owner, c.owner, "todo HACK");
                                 c.next.extend(script.next.into_iter());
                             }
+                            made_progress = true;
+                            break
                         }
                     }
                 }

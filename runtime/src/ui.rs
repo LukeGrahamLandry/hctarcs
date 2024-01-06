@@ -17,7 +17,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
 
     pub fn frame(&mut self, world: &mut World<S, R>) {
         egui_macroquad::ui(|egui_ctx| {
-            egui::Window::new("Sprites").hscroll(true).default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 20.0))
+            egui::Window::new("Sprites").vscroll(true).hscroll(true).default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 20.0))
                 .show(egui_ctx, |ui| {
                     let sprites = world.bases.iter().zip(world.custom.iter()).enumerate();
                     Grid::new("vars")

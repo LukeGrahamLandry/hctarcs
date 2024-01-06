@@ -61,6 +61,7 @@ impl<'a> Infer<'a> {
         if let Some((target_i, proc_i)) = self.current_fn {
             let proc = &mut self.project.targets[target_i].procedures[proc_i];
             if !proc.needs_async {
+                println!("mark_async {}", proc.name);
                 proc.needs_async = true;
                 self.dirty += 1;
             }
@@ -124,7 +125,12 @@ impl<'a> Infer<'a> {
                 self.infer_expr(e);
                 self.mark_async();
             }
-            Stmt::BroadcastWait(_) | Stmt::StopScript | Stmt::Exit => {
+            Stmt::StopScript => {
+                // This is only async if fn is already async so dont mark here.
+                // TODO: this gives me a way to toggle if linrays uses async loops which means i can debug why they dont work
+                self.mark_async();
+            }
+            Stmt::BroadcastWait(_) | Stmt::Exit => {
                 self.mark_async();
             }
         }

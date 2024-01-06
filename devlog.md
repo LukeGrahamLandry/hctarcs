@@ -9,6 +9,8 @@ TODO: since I never mutate strings anyway, Str::Owned should be an `Rc<str>` ins
 Alternativly, I could optimise concat to reuse the buffer but I clone for every call and loop so thats more important. 
 
 Now it builds but just "system has been shut down"
+Was problem with my weird closure action chaining in collapse_stmts.
+now panic could not resolve path `/bin/shell`
 
 ## trying to get browser working again (Jan 6)
 

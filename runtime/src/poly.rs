@@ -78,7 +78,7 @@ impl Str {
     // TODO: what to do on OOB?
     /// Does not allocate.
     pub fn get_index(&self, index: f64) -> Str {
-        assert!(index > 0.0);
+        assert!(index >= 1.0);
         let index = index as usize - 1;
         let c = match self {
             Str::Char(c) => if index == 0 {

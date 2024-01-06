@@ -28,10 +28,12 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     /// This is useful for function bodies where you need to return a callable future but you want to
     /// capture arguments. TODO: this doesnt solve nested loops.
     CallOnce(Box<FnFutOnce<S, R>>),
+    UserFnCall(Box<FnFutOnce<S, R>>),
     CloneMyself,
     LoopYield,
     StopAllScripts,
     StopCurrentScript,
+    CallMarker,
     None,
     // TODO: This should be a Vec<Script> instead since you might want to wait on other sprites.
     //       then receive should return a vec![ioaction] and the runtime turns it into one of these or flattens it.
@@ -147,7 +149,9 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
             IoAction::StopAllScripts => write!(f, "IoAction::StopAllScripts"),
             IoAction::StopCurrentScript => write!(f, "IoAction::StopCurrentScript"),
             IoAction::CallOnce(_) => write!(f, "IoAction::CallOnce(FnFutOnce...)"),
+            IoAction::UserFnCall(_) => write!(f, "IoAction::UserFnCall(FnFutOnce...)"),
             IoAction::ConcurrentScripts(s) => write!(f, "IoAction::ConcurrentScripts(...)"),
+            IoAction::CallMarker =>  write!(f, "IoAction::CallMarker"),
         }
     }
 }
