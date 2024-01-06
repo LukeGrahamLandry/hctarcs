@@ -15,7 +15,7 @@ use crate::Instant;
 
 // TODO: try to clean up the concurrency model. Relationship between IoAction, FnFut, and FutOut feels a bit over complicated.
 pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
-    sleep(f64),
+    SleepSecs(f64),
     WaitUntil(Instant),
     // TODO: compiler doesnt emit these, it calls the context method.
     // TODO: its awkward that I have this fusion between requests and waiting for requests
@@ -40,6 +40,7 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     /// This is immediately expanded by the runtime into the current script.
     /// It's just a way to do multiple things where one was expected.
     Sequential(Vec<IoAction<S, R>>),
+    ConcurrentScripts(Vec<Script<S, R>>)
 }
 
 // TODO: this can go on FutOut for breakpoints and is zero sized in not(inspect)
@@ -53,6 +54,7 @@ pub type FnFut<S, R> = dyn FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S,
 pub type FnFutOnce<S, R> = dyn FnOnce(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R>;
 pub type FutOut<S, R> = (IoAction<S, R>, Callback<S, R>);
 
+#[derive(Debug)]
 pub struct Script<S: ScratchProgram<R>, R: RenderBackend<S>>  {
     pub next: Vec<IoAction<S, R>>,
     pub owner: usize,  // Which instance requested this action
@@ -62,6 +64,7 @@ pub struct Script<S: ScratchProgram<R>, R: RenderBackend<S>>  {
 pub enum Callback<S: ScratchProgram<R>, R: RenderBackend<S>> {
     /// Resolved. Call this action next.
     Then(Box<FnFut<S, R>>),  // TODO: this could be an ioaction and make everything more consistant
+    ThenOnce(Box<FnFutOnce<S, R>>),
     /// Not yet resolved. Must call the same action again. (ex. body of loop).
     Again,
     /// Fully resolved.
@@ -92,6 +95,13 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
         (self, Callback::Then(Box::new(f)))
     }
 
+    pub fn then_once<F: FnOnce(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
+        assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
+        (self, Callback::ThenOnce(Box::new(f)))
+    }
+
+
+
     pub fn again(self) -> FutOut<S, R> {
         (self, Callback::Again)
     }
@@ -106,18 +116,9 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
         IoAction::Sequential(vec![self, other])
     }
 
-    pub  fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
+    pub fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
         IoAction::Sequential(vec![self, IoAction::Call(Box::new(f))])
     }
-}
-
-// TODO: its unfortunate that this allocates
-pub fn forward_to_sync<S: ScratchProgram<R>, R: RenderBackend<S>, O: Sprite<S, R> + Sized>(msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
-    Box::new(move |ctx, this| {
-        let this: &mut O = ctx.trusted_cast(this);
-        this.receive(ctx, msg);
-        IoAction::None.done()
-    })
 }
 
 // TODO: i'd rather the syntax be list of stmts semicolon terminated with optional last than current where blocks need to be { wrapped }
@@ -142,10 +143,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
             IoAction::None => write!(f, "IoAction::None"),
             IoAction::Concurrent(c) => write!(f, "IoAction::Concurrent({c:?})"),
             IoAction::Sequential(c) => write!(f, "IoAction::Sequential({c:?})"),
-            IoAction::sleep(s) => write!(f, "IoAction::StartSleep({s})"),
+            IoAction::SleepSecs(s) => write!(f, "IoAction::StartSleep({s})"),
             IoAction::StopAllScripts => write!(f, "IoAction::StopAllScripts"),
             IoAction::StopCurrentScript => write!(f, "IoAction::StopCurrentScript"),
             IoAction::CallOnce(_) => write!(f, "IoAction::CallOnce(FnFutOnce...)"),
+            IoAction::ConcurrentScripts(s) => write!(f, "IoAction::ConcurrentScripts(...)"),
         }
     }
 }
@@ -156,8 +158,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for Callback<S, R> {
             Callback::Then(s) =>write!(f, "Callback::Then(FnFut...)"),
             Callback::Again => write!(f, "Callback::Again"),
             Callback::Done => write!(f, "Callback::Done"),
+            Callback::ThenOnce(s) =>write!(f, "Callback::ThenOnce(FnFutOnce...)"),
         }
     }
 }
-
-

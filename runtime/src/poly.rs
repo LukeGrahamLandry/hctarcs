@@ -20,7 +20,7 @@ pub enum Poly {  // TODO: there are enough bits to pack this better, especially 
 pub enum Str {
     Const(&'static str),
     Char(char),
-    Owned(String),
+    Owned(String),  // TODO: Rc
 }
 
 /// 1-indexed Vec with silently failing operations.

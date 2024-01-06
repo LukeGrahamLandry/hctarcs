@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use crate::{HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Str, Trigger, World};
+use crate::{HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Sprite, Str, Trigger, World};
 use egui::{Button, CollapsingHeader, Direction, Grid, Layout, Separator, Ui};
 use crate::backend::RenderHandle;
 
@@ -23,6 +23,14 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                     Grid::new("vars")
                         .striped(true)
                         .show(ui, |ui| {
+                            CollapsingHeader::new(format!("Globals")
+                            ).show(ui, |ui| {
+                                for (i, name) in world.globals.get_var_names().into_iter().enumerate() {
+                                    ui.label(format!("{name} = {:?}", world.globals.var(i)));
+                                    ui.end_row();
+                                }
+                            });
+                            ui.end_row();
                             for (i, (base, user)) in sprites {
                                 CollapsingHeader::new(format!("[{}] pos:({:.0}, {:.0}), dir:{:.0}, size:{:.0}% pen:({}, size:{}) costume:{}",
                                                               base._uid, base.x, base.y, base.direction, base.size_frac * 100.0, base.pen.active, base.pen.size, base.costume)

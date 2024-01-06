@@ -48,16 +48,9 @@ pub enum Trigger<Msg> {
 }
 
 pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
-    /// Sync projects may override this one but world will not call it directly.
-    fn receive(&mut self, _ctx: &mut FrameCtx<S, R>, _msg: Trigger<S::Msg>) {
-        // Implementation is left as an exercise for the compiler...
-    }
-
-    // TODO: this is not an async function; it returns an async function. that's a strange choice but it makes it easier to call.
-    fn receive_async(&self, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>> {
-        // TODO: can't do a default impl that forwards to receive because of confusing Any/dyn/?Sized things
-        unreachable!("Compiler must impl receive_async->forward_to_sync")
-    }
+    // TODO: this is not an async function; it returns an async function. that's a strange choice
+    //       But that makes it easier to call because you dont need a Ctx so the world doesn't need to store messages to the next frame.
+    fn receive_async(&self, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>>;
 
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.
     // You can't just impl here and have where Self: Clone cause you can't call it on the trait object.
@@ -90,7 +83,7 @@ impl Default for SpriteBase {
             pen: Default::default(),
             last_answer: "".to_string(),
             costume: 0,
-            size_frac: 1.0,
+            size_frac: 2.0,  // TODO: does custom json have a scale?
         }
     }
 }

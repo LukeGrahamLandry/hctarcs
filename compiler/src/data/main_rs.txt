@@ -19,8 +19,6 @@ fn main() {{
 impl ScratchProgram<Backend> for Stage {{
     type Msg = Msg;
     type Globals = Stage;
-    // HACK
-    type UnitIfNoAsync = {async_type_marker};
     fn create_initial_state() -> (Stage, Vec<Box<dyn Sprite<Stage, Backend>>>) {{
         (Stage::default(), vec![{sprites}])
     }}

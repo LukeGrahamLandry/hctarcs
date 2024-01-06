@@ -6,22 +6,12 @@ impl {name} {{
 {procs}
 }}
 impl Sprite<Stage, Backend> for {name} {{
-    fn receive(&mut self, ctx: &mut Ctx, msg: Trigger<Msg>) {{
-        let this = self;
-        // All the plumbing exists for the compiler to put things here but currently it doesn't.
-        match msg {{
-            {sync_handlers}
-            _ => {{}}  // Ignored. Nothing sync cares about this event.
-        }}
-    }}
-
     fn receive_async(&self, msg: Trigger<Msg>) -> Box<FnFut<Stage, Backend>> {{
         Box::new(move |ctx, this| {{
             let this: &mut Self = ctx.trusted_cast(this);
-            nosuspend!(this.receive(ctx, msg));  // TODO: does scratch define an ordering?
             match msg {{
                 {async_handlers}
-                _ => IoAction::None.done(),  // Ignored. Nothing async cares about this event
+                _ => IoAction::None.done(),  // Ignored. Nothing cares about this event
             }}
         }})
     }}

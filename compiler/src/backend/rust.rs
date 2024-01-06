@@ -23,7 +23,7 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
     }).collect();
     assert_eq!(msg_fields.len(), msgs.len(), "lost some to mangling dup names");
     let msg_fields: String = msg_fields.into_iter().collect();
-    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false }.emit()).collect();
+    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false, current: None }.emit()).collect();
     let sprites: String = project.targets
         .iter()
         .filter(|target| !target.is_stage)  // TODO: wrong cause stage can have scripts but im using it as special magic globals so need to rethink.
@@ -64,8 +64,7 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
         costume_names=costume_names,
         msg_fields=msg_fields,
         msg_names=msg_names,
-        body=body,
-        async_type_marker=async_type_marker
+        body=body
     )
 }
 
@@ -86,6 +85,8 @@ struct Emit<'src> {
     target: &'src Sprite,
     triggers: HashMap<Trigger, Vec<RustStmt>>,
     current_is_async: bool,
+    // This is used for loop closures cloning arguments. Scripts don't have arguments so its fine.
+    current: Option<&'src Proc>,
 }
 
 impl<'src> Emit<'src> {
@@ -95,6 +96,7 @@ impl<'src> Emit<'src> {
         let mut visit_vars_mut = String::new();
         let mut fields = String::new();
 
+        // TODO: factor out debug info stuff
         for (i, v) in self.target.fields.iter().enumerate() {
             let name = &self.project.var_names[v.0];
             fields += &format!("   {}: {},\n", name, self.inferred_type_name(*v));
@@ -115,6 +117,7 @@ impl<'src> Emit<'src> {
         // For each entry point, push a RustStmt to target[Trigger]
         for func in &self.target.scripts {
             self.current_is_async = true;  // Scripts are always async.
+            self.current = None;
             let body = self.emit_block(&func.body);
             // TODO: idk why im in a functional mood rn
             let handler = match self.triggers.remove(&func.start) {
@@ -133,8 +136,10 @@ impl<'src> Emit<'src> {
             let script_ioactions: Vec<String> = scripts.iter().map(|script|
                 match script.clone().to_sync() {
                     None => script.clone().to_closed_action().to_string(),
+                    // For now, all entry points are required to be async.
+                    // TODO: if there's only one
                     Some(src) => format!(r#"
-                    IoAction::Call(Box::new(move |ctx, this| {{
+                    IoAction::CallOnce(Box::new(move |ctx, this| {{
                         let this: &mut Self = ctx.trusted_cast(this);
                         nosuspend!({{
                         {src}
@@ -163,7 +168,6 @@ impl<'src> Emit<'src> {
         template!(
             "../data/sprite_body",
             name=self.target.name,
-            sync_handlers="",
             procs=procs,
             fields=fields,
             async_handlers=async_handlers,
@@ -175,7 +179,8 @@ impl<'src> Emit<'src> {
 
     fn emit_custom_proc(&mut self, t: &'src Proc) -> String {
         self.current_is_async = t.needs_async;
-        println!("emit {} async={}", t.name, t.needs_async);
+        self.current = Some(t);
+        // println!("emit {} async={}", t.name, t.needs_async);
         let args = if t.args.is_empty() {
             "".to_string()
         } else {
@@ -197,7 +202,7 @@ impl<'src> Emit<'src> {
         "#, t.name, args, body.to_closed_action())
             },
             Some(src) => {
-                // TODO
+                // TODO: turn this back on
                 // assert!(!t.needs_async);
                 format!("fn {}(&mut self, ctx: &mut Ctx{}){{\nlet this = self;\n{src}}}\n\n", t.name, args)
             }
@@ -240,6 +245,7 @@ impl<'src> Emit<'src> {
                     ],
                     end_cond: self.emit_expr(cond, Some(SType::Bool)),
                     inc_stmt: "".to_string(),
+                    clone_args: self.clone_captured_args(),
                 };
             }
             Stmt::RepeatTimes(times, body) => {
@@ -251,6 +257,7 @@ impl<'src> Emit<'src> {
                     ],
                     end_cond: rval(SType::Bool, "i >= end"),
                     inc_stmt: format!("i += 1;"),
+                    clone_args: self.clone_captured_args(),
                 };
             }
             Stmt::RepeatTimesCapture(times, body, v, s) => {
@@ -258,6 +265,7 @@ impl<'src> Emit<'src> {
                 let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly)).unwrap();
                 let iter_expr = rval(SType::Number, "i".to_string()).coerce(&var_ty);
 
+                // Scratch needs to observe the counter as a float so might as well skip the cast.
                 return RustStmt::Loop {
                     init: format!("let mut i = 1.0f64; let end: f64 = {};", self.emit_expr(times, Some(SType::Number))),
                     body: vec![
@@ -265,6 +273,7 @@ impl<'src> Emit<'src> {
                     ],
                     end_cond: rval(SType::Bool, "i > end"),
                     inc_stmt: format!("{} = {iter_expr}; i += 1.0;", self.ref_var(*s, *v, true)),
+                    clone_args: self.clone_captured_args(),
                 };
             }
             Stmt::StopScript => {
@@ -295,17 +304,38 @@ impl<'src> Emit<'src> {
                 format!("{}.remove({});\n", self.ref_var(*s, *v, true), self.emit_expr(i, Some(SType::Number))),  // TODO: what happens on OOB?
             Stmt::BroadcastWait(name) => {
                 // TODO: do the conversion at comptime when possible. it feels important enough to have the check if param is a literal
-                // TODO: multiple receivers HACK
-                assert!(self.target.is_singleton);
-                format!("this.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
+                // TODO: happy path if self.target.is_singleton
+                return RustStmt::IoAction(format!("IoAction::BroadcastWait(msg_of({}))", self.emit_expr(name, Some(SType::Str))));
             }
             Stmt::Exit => return RustStmt::IoAction(String::from("IoAction::StopAllScripts")),
             Stmt::WaitSeconds(seconds) => {
-                return RustStmt::IoAction(format!("IoAction::sleep({})", self.emit_expr(seconds, Some(SType::Number))))
+                return RustStmt::IoAction(format!("IoAction::SleepSecs({})", self.emit_expr(seconds, Some(SType::Number))))
             }
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         })
     }
+
+    // Ugly solution to async loops being FnMut
+    fn clone_captured_args(&self) -> String {
+        match self.current {
+            None => String::new(),  // Scripts don't have arguments.
+            Some(proc) => {
+                if !self.current_is_async {
+                    return "unreachable!(\"sync proc so no loop clone args for capture\")".to_string();
+                }
+                proc.args.iter().map(|v| {
+                    let ty = self.project.expected_types[v.0].unwrap_or(SType::Poly);
+                    let name = &self.project.var_names[v.0];
+                    match ty {
+                        SType::Number | SType::Bool => format!(""),
+                        SType::Str | SType::Poly => format!("let {name} = {name}.clone();\n"),
+                        SType::ListPoly => unreachable!()
+                    }
+                }).collect()
+            }
+        }
+    }
+
 
     fn arg_types(&self, proc_name: &str) -> Vec<Option<SType>> {
         // If I was being super fancy, we know they're sequential so could return a slice of the original vec with 'src.
@@ -510,6 +540,9 @@ enum RustStmt {
         body: Vec<RustStmt>,
         end_cond: RustValue,
         inc_stmt: String,
+        /// You can't move out of an FnMut closure (which is needed because the loop will be called multiple times)
+        /// This is not used if the loop is emitted as sync code.
+        clone_args: String,
     },
     If {
         cond: String,
@@ -577,6 +610,7 @@ impl Display for RustValue {
 
 // Returns a value of type IoAction
 fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
+    println!("\n\n\n{:?}", stmts);
     // TODO: collapse if all are sync
     // let mut action = IoAction(String::from("IoAction::None"), 0);
     // for stmt in collapse_if_sync(stmts).into_iter().rev() {  // TODO: is this rev or not?
@@ -597,19 +631,27 @@ fn close_stmts(stmts: Vec<RustStmt>) -> IoAction {
             }
         } else {
             if let Some(old) = pending_sync {
-                compressed = Box::new(move |next| RustStmt::Sync(old.clone()).to_action()(stmt.to_action()(next)));
+                compressed = Box::new(move |next| compressed(RustStmt::Sync(old.clone()).to_action()(next)));
                 pending_sync = None;
             } else {
-                compressed = Box::new(move |next| stmt.to_action()(next));
+                compressed = Box::new(move |next| compressed(stmt.to_action()(next)));
             }
         }
     }
 
-    if let Some(old) = pending_sync {
+    let result = if let Some(old) = pending_sync {
         compressed(RustStmt::Sync(old).to_closed_action())
     } else {
         compressed(IoAction(String::from("IoAction::None"), 0))
-    }
+    };
+    println!("{:?}", result);
+
+    result
+
+    // Alternate. doesnt work
+    // let stmts = collapse_if_sync(stmts);
+    // let actions: Vec<_> = stmts.into_iter().map(|s| s.to_closed_action().0).collect();
+    // IoAction(format!("IoAction::Sequential(vec![{}])", actions.join(", ")), 0)
 }
 
 impl RustStmt {
@@ -624,11 +666,10 @@ impl RustStmt {
                 RustStmt::Sync(s) => format!("/*{i}*/{CALL_ACTION_ONCE}{s}  \n{rest_src}.done() }}))/*{i}*/"),
                 RustStmt::Block(body) => {
                     let body = close_stmts(body);
-
-                    format!("/*{i}*/{CALL_ACTION_ONCE}{body}.then(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
+                    format!("/*{i}*/{CALL_ACTION_ONCE}{body}.then_once(move |ctx, this| {{ {rest_src}.done() }}) }}))/*{i}*/")
                 },
                 RustStmt::IoAction(a) => format!("/*{i}*/{a}.append({rest_src})/*{i}*/"),
-                RustStmt::Loop { init, body, end_cond, inc_stmt } => {
+                RustStmt::Loop { init, body, end_cond, inc_stmt, clone_args } => {
                     // TODO: collapse if body.to_sync().is_some()
                     // TODO want to collapse if rest_src.to_sync().is_some() so maybe kill ioaction and have this be appening a RustStmt to get another RustStmt
 
@@ -636,6 +677,7 @@ impl RustStmt {
                     format!(r#"/*{i}*/{CALL_ACTION_ONCE}
                     {init}
                     {CALL_ACTION}
+                    {clone_args}
                     if {end_cond} {{
                         {rest_src}.done()
                     }} else {{
@@ -646,7 +688,7 @@ impl RustStmt {
                 }})/*{i}*/)"#)
                 },
                 RustStmt::If { cond, if_true, if_false } => {
-                    // TODO: ugly
+                    // TODO: ugly (+ copy-n-paste)
                     if let (Some(if_true), Some(if_false)) = (if_true.clone().to_sync(), if_false.clone().unwrap_or(Box::new(RustStmt::Sync(String::new()))).to_sync()) {
                         return RustStmt::Sync(format!("if {cond} {{ {if_true} }} else {{ {if_false} }}")).to_action()(IoAction(rest_src, i));
                     } else {
@@ -671,14 +713,12 @@ impl RustStmt {
         todo!();
     }
 
-
-
     fn to_closed_action(self) -> IoAction {
         self.to_action()(IoAction(String::from("IoAction::None"), 0))
     }
 
-    // TODO: check version that doesnt require clone
-    // TODO: result that returns the original if not?
+    // TODO: !! check version that doesnt require clone. i call this so often.
+    //       OR result that returns the original if not?
     /// None if self contains any await points.
     fn to_sync(self) -> Option<String> {
         let sync_block = |stmts: Vec<RustStmt>|
@@ -697,7 +737,7 @@ impl RustStmt {
             RustStmt::Sync(s) => Some(s),
             RustStmt::Block(stmts) => sync_block(stmts),
             RustStmt::IoAction(_) => None,
-            RustStmt::Loop { init, body, end_cond, inc_stmt } => {
+            RustStmt::Loop { init, body, end_cond, inc_stmt, .. } => {
                 match sync_block(body) {
                     None => None,
                     Some(body) => Some(format!("{init}\n while !({end_cond}) {{ {inc_stmt} {body} }}"))
@@ -722,6 +762,7 @@ fn collapse_if_sync(stmts: Vec<RustStmt>) -> Vec<RustStmt> {
     }
 }
 
+#[derive(Debug)]
 struct IoAction(String, usize);
 
 

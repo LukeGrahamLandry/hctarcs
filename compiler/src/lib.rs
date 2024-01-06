@@ -2,6 +2,7 @@
 // TODO: list of valid template names for warning if misspell
 // TODO: arg for just print default value of template.
 // TODO: trailing comma?
+// TODO: allow `name` instead of `name=name`
 #[macro_export] macro_rules! template {
     ($opts:expr, $id:literal, $($name:ident=$value:expr),*) => {
         match $opts.get_template_path($id) {

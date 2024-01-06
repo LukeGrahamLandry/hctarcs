@@ -1,5 +1,16 @@
 
-## trying to get browser working again 
+## async tres (Jan 6)
+
+Removed the sync version of receive since I don't bother using it ever for fully sync projects. You just wrap the message handler in a single future. (That's not even an allocation since it wont capture anything, its one fn ptr indirection).
+
+Tres is big enough to run into a problem with loops being FnMut so if they capture the function arguments, you can't move out of those for await points in the body or at the end. Noticing this I made everything else FnOnce cause that's easier but doesn't help loops. I'll just clone fn args in loop preamble. Might be able to do better but its only sad for computed strings anyway (lists can't be function args). 
+
+TODO: since I never mutate strings anyway, Str::Owned should be an `Rc<str>` instead of a String. 
+Alternativly, I could optimise concat to reuse the buffer but I clone for every call and loop so thats more important. 
+
+Now it builds but just "system has been shut down"
+
+## trying to get browser working again (Jan 6)
 
 It broke the wasm version kinda tho.
 

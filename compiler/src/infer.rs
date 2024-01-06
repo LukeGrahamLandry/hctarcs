@@ -23,7 +23,9 @@ pub fn run_infer(project: &mut Project) {
             last = false;
         }
         count += 1;
-        println!("Infer round {count}");
+        if count > 10 {
+            println!("Infer round {count}");
+        }
     }
 }
 
@@ -39,7 +41,6 @@ impl<'a> Infer<'a> {
         for i in 0..self.project.targets.len() {
             for j in 0..self.project.targets[i].procedures.len() {
                 let proc = &self.project.targets[i].procedures[j];
-                println!("=== infer {}", proc.name);
                 let block = proc.body.clone();
                 self.current_fn = Some((i, j));
                 self.infer_block(block);
@@ -62,7 +63,6 @@ impl<'a> Infer<'a> {
             if !proc.needs_async {
                 proc.needs_async = true;
                 self.dirty += 1;
-                println!("async {}", proc.name)
             }
         }
     }
@@ -111,10 +111,9 @@ impl<'a> Infer<'a> {
             Stmt::ListRemoveIndex(_, _, _) => {}
             Stmt::BuiltinRuntimeCall(_, _) => {}
             Stmt::CallCustom(name, _) => {
-                if let Some((sprite_id, current_func_id)) = self.current_fn {
+                if let Some((sprite_id, _)) = self.current_fn {
                     let func = self.project.targets[sprite_id].lookup_proc(&name);
                     if func.unwrap().needs_async {
-                        println!("{} call async {name}", self.project.targets[sprite_id].procedures[current_func_id].name);
                         self.mark_async();
                     }
                 }
@@ -125,10 +124,7 @@ impl<'a> Infer<'a> {
                 self.infer_expr(e);
                 self.mark_async();
             }
-            Stmt::BroadcastWait(_) => {
-                // TODO: this will be async very soon
-            }
-            Stmt::StopScript | Stmt::Exit => {
+            Stmt::BroadcastWait(_) | Stmt::StopScript | Stmt::Exit => {
                 self.mark_async();
             }
         }

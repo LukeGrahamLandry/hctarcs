@@ -29,8 +29,7 @@ pub use callback::*;
 
 pub trait ScratchProgram<R: RenderBackend<Self>>: Sized + 'static {
     type Msg: Debug + Copy + 'static;
-    type Globals;
-    type UnitIfNoAsync;  // TODO: use const generics?  // TODO: remove if im just forwarding anyway
+    type Globals: Sprite<Self, R>;
 
     fn create_initial_state() -> (Self::Globals, Vec<Box<dyn Sprite<Self, R>>>);
 
@@ -89,35 +88,19 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         self.broadcast_toplevel_async(Trigger::FlagClicked);
     }
 
+    // TODO: remove
     pub fn broadcast(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
-        if size_of::<S::UnitIfNoAsync>() == 0 {
-            self.broadcast_sync(render, msg);
-        } else {
-            self.broadcast_toplevel_async(msg);
-        }
+        self.broadcast_toplevel_async(msg);
     }
 
     // TODO: the compiler knows which messages each type wants to listen to.
     //       it could generate a separate array for each and have no virtual calls or traversing everyone on each message
-    pub fn broadcast_sync(&mut self, render: &mut R::Handle<'_>, msg: Trigger<S::Msg>) {
-        assert_zero_sized::<S::UnitIfNoAsync>();
-        let sprites = self.bases.iter_mut().zip(self.custom.iter_mut());
-        let globals = &mut self.globals;
-        for (sprite, c) in sprites {
-            c.receive(&mut FrameCtx {
-                sprite,
-                globals,
-                render,
-            }, msg.clone());
-        }
-    }
-
     // TODO: there would also be a version for broadcast and wait that adds listeners to its personal stack.
     pub fn broadcast_toplevel_async(&mut self, msg: Trigger<S::Msg>) {
         for (owner, c) in self.custom.iter().enumerate() {
             let action = c.receive_async(msg);
             self.scripts.push(Script {
-                next: vec![IoAction::Call(action)],
+                next: vec![IoAction::CallOnce(action)],
                 owner,
             });
         }
@@ -199,8 +182,14 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             // (break) to retain and yield the script until next poll.
             // (continue) when future resolved and want to pop the next immediately.
             loop {  // TODO: replace the body of the loop with a method returning enum[made_progress, return] (true, false)=ScriptFinished   (true, false)=ProgressYield   (false, true)=WaitingYield (false, false)=unreachable
-                // println!("{:?}\n=======", c.next);
-
+                let sprite = &mut self.bases[c.owner];
+                // Note the deref! I want to type erase the contents of the box not the box itself.
+                let custom: &mut dyn Sprite<S, R> = &mut *self.custom[c.owner];  // This is what needs trait_upcasting
+                let ctx = &mut FrameCtx {
+                    sprite,
+                    globals: &mut self.globals,
+                    render,
+                };
 
                 #[cfg(feature = "inspect")]
                 {
@@ -216,21 +205,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                     },
                     Some(action) => match action {  // Poll the future.
                         IoAction::Call(mut f) => {  // Call some other async function.
-                            let sprite = &mut self.bases[c.owner];
-                            // Note the deref! I want to type erase the contents of the box not the box itself.
-                            let custom: &mut dyn Sprite<S, R> = &mut *self.custom[c.owner];  // This is what needs trait_upcasting
-                            let ctx = &mut FrameCtx {
-                                sprite,
-                                globals: &mut self.globals,
-                                render,
-                            };
-
                             let (action, next) = f(ctx, custom);
-                            // println!("Returned {action:?} {next:?}");
-
                             // Its a stack, so push the next handler and then push the action that must resolve before calling it.
                             match next {
                                 Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
+                                Callback::ThenOnce(callback) => c.next.push(IoAction::CallOnce(callback)),
                                 Callback::Again => c.next.push(IoAction::Call(f)),
                                 Callback::Done => {}
                             }
@@ -238,6 +217,20 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             break
                         },
+                        IoAction::CallOnce(f) => {  // TODO: copy-n-paste
+                            let (action, next) = f(ctx, custom);
+
+                            // Its a stack, so push the next handler and then push the action that must resolve before calling it.
+                            match next {
+                                Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
+                                Callback::ThenOnce(callback) => c.next.push(IoAction::CallOnce(callback)),
+                                Callback::Again => unreachable!("Tried to use IoAction::CallOnce for loop body."),
+                                Callback::Done => {}
+                            }
+                            c.next.push(action);
+                            made_progress = true;
+                            break
+                        }
 
                         // TODO: this might be waiting two frames since fn return already yields so maybe should be treated as IoAction::None
                         IoAction::LoopYield => { // Yields instantly resolve
@@ -255,7 +248,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             continue
                         }
-                        IoAction::sleep(seconds) => {
+                        IoAction::SleepSecs(seconds) => {
                             if seconds > 0.0 {
                                 // Note: not from_seconds because dont want to round down to zero
                                 let replace = IoAction::WaitUntil(Instant::now().add(Duration::from_millis((seconds * 1000.0)as u64)));
@@ -304,7 +297,19 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             }
                         }
 
-                        IoAction::BroadcastWait(_) => todo!(),
+                        IoAction::BroadcastWait(msg) => {
+                            let mut s = vec![];
+                            for (owner, c) in self.custom.iter().enumerate() {
+                                let action = c.receive_async(Trigger::Message(msg));
+                                s.push(Script {
+                                    next: vec![IoAction::CallOnce(action)],
+                                    owner,
+                                });
+                            }
+                            c.next.push(IoAction::ConcurrentScripts(s));
+                            made_progress = true;
+                            break
+                        },
                         IoAction::CloneMyself => todo!(),
                         IoAction::Concurrent(actions) => {
                             // TODO: this is very wrong but works for now. if i dont guarantee execution order this isn't technically invalid.
@@ -320,7 +325,12 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             return false;
                         }
-                        IoAction::CallOnce(_) => todo!()
+                        IoAction::ConcurrentScripts(scripts) => {
+                            for script in scripts {
+                                assert_eq!(script.owner, c.owner, "todo HACK");
+                                c.next.extend(script.next.into_iter());
+                            }
+                        }
                     }
                 }
 
