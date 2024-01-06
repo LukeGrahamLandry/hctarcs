@@ -20,14 +20,20 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     // TODO: compiler doesnt emit these, it calls the context method.
     // TODO: its awkward that I have this fusion between requests and waiting for requests
     /// https://en.scratch-wiki.info/wiki/Ask_()_and_Wait_(block)
-    Ask(String),  // Tell the event loop to request user input. Replaced with WaitForAsk(_).
-    WaitForAsk(usize),  // Suspend until the input request with id _ is fulfilled.
+    Ask(String, usize),  // Tell the event loop to request user input. Replaced with WaitForAsk(_).
+    WaitForAsk(usize), // sprite id
     BroadcastWait(S::Msg),
     Call(Box<FnFut<S, R>>),
     CloneMyself,
     LoopYield,
+    StopAllScripts,
     None,
+    // TODO: This should be a Vec<Script> instead since you might want to wait on other sprites.
+    //       then receive should return a vec![ioaction] and the runtime turns it into one of these or flattens it.
+    //       then the top level of the runtime can also be one of these and everything's consistant.
     Concurrent(Vec<IoAction<S, R>>),
+    /// This is immediately expanded by the runtime into the current script.
+    /// It's just a way to do multiple things where one was expected.
     Sequential(Vec<IoAction<S, R>>),
 }
 
@@ -121,8 +127,8 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             IoAction::WaitUntil(time) => write!(f, "IoAction::WaitUntil({time:?})"),
-            IoAction::Ask(q) => write!(f, "IoAction::Ask({q:?})"),
-            IoAction::WaitForAsk(id) => write!(f, "IoAction::WaitForAsk({id:?})"),
+            IoAction::Ask(q, id) => write!(f, "IoAction::Ask({q:?}, {id})"),
+            IoAction::WaitForAsk(id) => write!(f, "IoAction::WaitForAsk({id})"),
             IoAction::BroadcastWait(msg) => write!(f, "IoAction::BroadcastWait({msg:?})"),
             IoAction::Call(_) => write!(f, "IoAction::Call(FnFut...)"),
             IoAction::CloneMyself => write!(f, "IoAction::CloneMyself"),

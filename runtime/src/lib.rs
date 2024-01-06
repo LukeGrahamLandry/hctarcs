@@ -50,7 +50,8 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     custom: VecDeque<Box<dyn Sprite<S, R>>>,
     globals: S::Globals,
     scripts: Vec<Script<S, R>>,
-    last_ask_id: usize,  // TODO: non-blocking input that increments this
+    current_question: Option<String>,
+    last_answer: Option<String>,
     pub mode: RunMode,
     events: VecDeque<SEvent>,
     pub futs_this_frame: usize, // Inspect Only. TODO: graph
@@ -72,7 +73,8 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             custom: custom.into(),
             globals,
             scripts: vec![],
-            last_ask_id: 0,
+            current_question: None,
+            last_answer: None,
             mode: RunMode::Turbo,  // TODO: pass default on cli for when not inspect
             events: Default::default(),
             futs_this_frame: 0,
@@ -187,12 +189,18 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
     pub fn poll(&mut self, render: &mut R::Handle<'_>) -> bool {
         if self.scripts.is_empty() { return false; }  // fast path for sync or finished programs
         let mut made_progress = false;  // Set to true if every script was just waiting on io/timer
+        let mut stop_all = false; // TODO: this is ugly.
 
         self.scripts.retain_mut(|c| {
+            if stop_all {
+                return false;
+            }
+
             // (break) to retain and yield the script until next poll.
             // (continue) when future resolved and want to pop the next immediately.
             loop {  // TODO: replace the body of the loop with a method returning enum[made_progress, return] (true, false)=ScriptFinished   (true, false)=ProgressYield   (false, true)=WaitingYield (false, false)=unreachable
                 // println!("{:?}\n=======", c.next);
+
 
                 #[cfg(feature = "inspect")]
                 {
@@ -268,21 +276,31 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                                 continue
                             }
                         }
-                        IoAction::Ask(question) => {
-                            made_progress = true;
-                            // TODO: what if another script is already waiting on an ask?
-                            println!("ASK: {question}");
-                            c.next.push(IoAction::WaitForAsk(self.last_ask_id + 1));
-                            break
+                        IoAction::Ask(question, id) => {
+                            match self.current_question  {
+                                None => {
+                                    self.current_question = Some(question);
+                                    made_progress = true;
+                                    c.next.push(IoAction::WaitForAsk(id));
+                                    break
+                                }
+                                Some(_) => { // Scratch only shows one question at a time.
+                                    c.next.push(IoAction::Ask(question, id));
+                                    break
+                                }
+                            }
                         }
                         IoAction::WaitForAsk(id) => {
-                            if self.last_ask_id < id {  // Not done yet, no progress
-                                println!("TODO: WaitForAsk will never resolve. implement stdin polling");
-                                c.next.push(IoAction::WaitForAsk(id));
-                                break
-                            } else {
-                                made_progress = true;
-                                continue
+                            match &self.last_answer  {
+                                None => {
+                                    c.next.push(IoAction::WaitForAsk(id));
+                                    break
+                                }
+                                Some(_) => {
+                                    self.bases[id].last_answer = self.last_answer.take().unwrap();
+                                    made_progress = true;
+                                    continue
+                                }
                             }
                         }
 
@@ -293,6 +311,10 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             c.next.extend(actions.into_iter());
                             made_progress = true;
                             continue
+                        },
+                        IoAction::StopAllScripts => {
+                            stop_all = true;
+                            return false;
                         }
                     }
                 }
@@ -304,6 +326,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             // println!("Yield");
             return /*from closure*/  true
         });
+
+        if stop_all {
+            self.scripts.clear();
+            return false;
+        }
 
         made_progress
     }

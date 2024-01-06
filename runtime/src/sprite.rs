@@ -69,12 +69,12 @@ pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
     }
 
     #[cfg(feature = "inspect")]
-    fn var(&self, i: usize) -> VarBorrow {
+    fn var(&self, _: usize) -> VarBorrow {
         VarBorrow::Fail
     }
 
     #[cfg(feature = "inspect")]  // TODO: alas we're getting to the point of wanting a console scripting language.... if only someone had a nice ast
-    fn var_mut(&self, i: usize) -> VarBorrowMut {
+    fn var_mut(&mut self, _: usize) -> VarBorrowMut {
         VarBorrowMut::Fail
     }
 }

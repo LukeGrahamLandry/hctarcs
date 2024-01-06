@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
-use crate::{HALF_SCREEN_WIDTH, Poly, RenderBackend, RunMode, ScratchProgram, Str, Trigger, World};
-use egui::{Button, Direction, Grid, Layout, Separator, Ui};
+use crate::{HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Str, Trigger, World};
+use egui::{Button, CollapsingHeader, Direction, Grid, Layout, Separator, Ui};
 use crate::backend::RenderHandle;
 
 #[derive(Default)]
@@ -24,9 +24,14 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                         .striped(true)
                         .show(ui, |ui| {
                             for (i, (base, user)) in sprites {
-                                ui.label(format!("[{}] pos:({:.0}, {:.0}), dir:{:.0}, size:{:.0}% pen:({}, size:{}) costume:{}", base._uid, base.x, base.y, base.direction, base.size_frac * 100.0, base.pen.active, base.pen.size, base.costume));
-                                // TODO: this doesnt seem to actually call the debug impl. use my visitors instead. want pretty anyway.
-                                ui.label(format!("{:?}", user));
+                                CollapsingHeader::new(format!("[{}] pos:({:.0}, {:.0}), dir:{:.0}, size:{:.0}% pen:({}, size:{}) costume:{}",
+                                                              base._uid, base.x, base.y, base.direction, base.size_frac * 100.0, base.pen.active, base.pen.size, base.costume)
+                                ).show(ui, |ui| {
+                                    for (i, name) in user.get_var_names().into_iter().enumerate() {
+                                        ui.label(format!("{name} = {:?}", user.var(i)));
+                                        ui.end_row();
+                                    }
+                                });
                                 ui.end_row();
                             }
                         });
@@ -92,21 +97,23 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
     }
 }
 
+#[derive(Debug)]
 pub enum VarBorrow<'a> {
-    Num(f64),
-    Bool(bool),
+    Num(&'a f64),  // TODO: these could be by value since its just a word but consistency is easier rn
+    Bool(&'a bool),
     Str(&'a Str),
     Poly(&'a Poly),
-    List(&'a [Poly]),
+    List(&'a List<Poly>),
     Fail
 }
 
+#[derive(Debug)]
 pub enum VarBorrowMut<'a> {
     Num(&'a mut f64),
     Bool(&'a mut bool),
     Str(&'a mut Str),
     Poly(&'a mut Poly),
-    List(&'a mut [Poly]),
+    List(&'a mut List<Poly>),
     Fail
 }
 

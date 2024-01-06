@@ -1,4 +1,39 @@
 
+## trying to get browser working again 
+
+It broke the wasm version kinda tho.
+
+```js
+
+// Setup quad url which is needed by macroquad_egui.
+// I hoped this call fixes console errors when interacting with widgets. I guess they're expecting different version of api or I just included wrong somehow?
+// (wasm_exports.focus is not a function)
+miniquad_add_plugin({
+    register_plugin: params_register_js_plugin,
+    version: "0.0.1",
+    name: "quadurlidk",
+});
+```
+But no that changed nothing and even without it I get `Plugin quad_url version mismatchjs version: 0.1.0, crate version: 0.1.1`
+which isnt what i named my fake plugin so the thing must be registering iteslf properly.
+
+Its blindly setting params_register_js_plugin and params_set_mem without declaring, expecting to already exist?
+maybe they're just making sure not to conflict with other scripts that want to use
+those names? but why not just put everything in a scope instead of global.
+
+```js
+// TODO: i have wrong version on rust side i guess cause this doesnt exist and console complains
+if (wasm_exports.focus === undefined) {
+    wasm_exports.focus = () => {{}};
+}
+```
+but you cant do that, `TypeError: Cannot add property focus, object is not extensible`
+
+so thats not great sucess but on the other hand it does seem to work and let me interact with the gui.
+its just only showing the first frame of the animation. 
+so the actual problem is probably just that timers dont work. 
+
+
 ## inspect ui (Jan 5)
 
 want to be able to clear the pen. 

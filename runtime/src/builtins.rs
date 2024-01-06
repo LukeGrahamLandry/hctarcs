@@ -126,8 +126,8 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         }
     }
 
-    // TODO: will be async
-    pub fn sensing_askandwait(&mut self) {
+    // TODO: remove
+    pub fn sensing_askandwait_sync(&mut self) {
         let mut line = String::new();
         std::io::stdin().read_line(&mut line).unwrap();
         self.sprite.last_answer = line;  // TODO: trim new-line?
@@ -138,7 +138,7 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         self.render.say(msg.as_ref(), self.pos());
     }
 
-    pub fn stop_all(&mut self) {
+    pub fn stop_all_sync(&mut self) {
         println!("stop all");
         self.render.save_frame(&format!("scratch_exit_{}.png", SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()));
         std::process::exit(0);

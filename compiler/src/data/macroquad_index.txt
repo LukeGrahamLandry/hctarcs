@@ -1,12 +1,22 @@
 // index.html file that loads wasm blob and js glue with hack for interop between macroquad and wasm-bindgen
 // TODO: message while wasm is loading
 r#"<html><head><style>
-    body {{ text-align: center }}
-    canvas {{ overflow: hidden; outline: none; display: inline-block; }}
+    body {{ text-align: center; width: 100%; height: 100%; overflow: hidden; margin: 0; padding: 0; }}
+    canvas {{ overflow: hidden; outline: none; display: inline-block; width: 100%; height: 100%; }}
 </style></head><body>
-<!-- <button>Click here to start</button> -->
-<!-- `glcanvas` is a magic id mq_js_bundle looks for -->
-<canvas id="glcanvas" tabindex='1' width="480" height="360"></canvas>
+
+<button style="color: red; font-size: 2rem; margin-top: 30px;" id="start">Click here to start</button>
+<!-- `glcanvas` is a magic id mq_js_bundle looks for  width="480" height="360"-->
+<canvas id="glcanvas" tabindex='1'></canvas>
+<script>
+// quad_url sets this (expecting it to be declared) and then later i call miniquad_add_plugin with it.
+// TODO I must have some version mismatch cause quad_url expects these to be declared.
+
+</script>
+<script>
+var params_set_mem;
+var params_register_js_plugin;
+</script>
 <script src="{mq_js_bundle_url}"></script>
 <script type="module">
     {hint}
@@ -22,17 +32,20 @@ r#"<html><head><style>
             // When wasm-bindgen gets its hands on the import object, it will move things from [wbg] to [env] where rust can access them.
             console.log("the 'No __wbg_... function in gl.js' warnings are probably fine :)"); // TODO make them go away
         }},
-        on_init: () => set_wasm(wasm_exports),
+        on_init: () => {{
+            set_wasm(wasm_exports);
+            document.getElementById("start").hidden = true;
+        }},
         version: "0.2.0",
         name: "wbg",
     }});
 
-    load("{name}_bg.wasm");
-/*
-    document.getElementById("start", () => {{
-        document.getElementById("start").hidden = true;
-        document.getElementById("glcanvas").hidden = false;
+    document.getElementById("start").addEventListener("click", () => {{
+       document.getElementById("start").disabled = true;
+       document.getElementById("start").innerText = "Loading wasm...";
+        load("{name}_bg.wasm");
+   }});
 
-    }})
-*/
+
+
 </script></body></html>"#

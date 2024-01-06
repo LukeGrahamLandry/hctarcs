@@ -89,19 +89,24 @@ struct Emit<'src> {
 
 impl<'src> Emit<'src> {
     fn emit(&mut self) -> String {
+        let mut var_names = String::new();
         let mut visit_vars = String::new();
+        let mut visit_vars_mut = String::new();
         let mut fields = String::new();
-        for &v in &self.target.fields {
+
+        for (i, v) in self.target.fields.iter().enumerate() {
             let name = &self.project.var_names[v.0];
-            fields += &format!("   {}: {},\n", name, self.inferred_type_name(v));
-            let constructor= &match self.inferred_type(v) {
-                SType::Number => format!("Num("),
-                SType::Bool => format!("Bool("),
+            fields += &format!("   {}: {},\n", name, self.inferred_type_name(*v));
+            let constructor= &match self.inferred_type(*v) {
+                SType::Number => format!("Num(&"),
+                SType::Bool => format!("Bool(&"),
                 SType::Str => format!("Str(&"),
                 SType::ListPoly => format!("List(&"),
                 SType::Poly => format!("Poly(&"),
             };
-            visit_vars += &format!("consumer(\"{}\", V::{constructor}self.{name}));", name.escape_default());
+            var_names += &format!("\"{}\",", name.escape_default());
+            visit_vars += &format!("{i} => V::{constructor}self.{name}),");   // TODO: debug_assert safe string
+            visit_vars_mut += &format!("{i} => V::{constructor}mut self.{name}),");
         }
 
         let procs: String = self.target.procedures.iter().map(|t| self.emit_custom_proc(t)).collect();
@@ -160,7 +165,9 @@ impl<'src> Emit<'src> {
             procs=procs,
             fields=fields,
             async_handlers=async_handlers,
-            visit_vars=visit_vars
+            visit_vars=visit_vars,
+            var_names=var_names,
+            visit_vars_mut=visit_vars_mut
         )
     }
 
@@ -269,7 +276,7 @@ impl<'src> Emit<'src> {
                 assert!(self.target.is_singleton);
                 format!("this.receive(ctx, Trigger::Message(msg_of({})));\n", self.emit_expr(name, Some(SType::Str)))
             }
-            Stmt::Exit => format!("ctx.stop_all()\n"),
+            Stmt::Exit => return RustStmt::IoAction(String::from("IoAction::StopAllScripts")),
             Stmt::WaitSeconds(seconds) => {
                 return RustStmt::IoAction(format!("IoAction::sleep({})", self.emit_expr(seconds, Some(SType::Number))))
             }

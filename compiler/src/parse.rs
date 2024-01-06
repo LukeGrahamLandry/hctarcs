@@ -591,7 +591,7 @@ pub fn runtime_prototype(opcode: &str) -> Option<&'static [SType]> {
         "pen_setPenColorToColor" | "pen_setPenSizeTo" | "motion_changexby" | "motion_changeyby" | "motion_setx"
         | "motion_sety" | "looks_setsizeto"
         => Some(&[SType::Number]),
-        "pen_penUp" | "pen_stamp" | "looks_hide" | "pen_clear" | "pen_penDown" | "sensing_askandwait" /* TODO: this will be async */
+        "pen_penUp" | "pen_stamp" | "looks_hide" | "pen_clear" | "pen_penDown"
             => Some(&[]),
         "motion_gotoxy" => Some(&[SType::Number, SType::Number]),
         "looks_switchcostumeto" | "looks_say" => Some(&[SType::Str]),
