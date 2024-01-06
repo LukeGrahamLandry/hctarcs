@@ -13,7 +13,7 @@ pub struct Project {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Sprite {
-    pub functions: Vec<Func>,
+    pub scripts: Vec<Func>,
     pub procedures: Vec<Proc>,
     pub fields: Vec<VarId>,
     pub name: String,

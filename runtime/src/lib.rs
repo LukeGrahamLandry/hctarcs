@@ -316,6 +316,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             stop_all = true;
                             return false;
                         }
+                        IoAction::StopCurrentScript => {
+                            made_progress = true;
+                            return false;
+                        }
+                        IoAction::CallOnce(_) => todo!()
                     }
                 }
 

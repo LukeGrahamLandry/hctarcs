@@ -24,9 +24,14 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     WaitForAsk(usize), // sprite id
     BroadcastWait(S::Msg),
     Call(Box<FnFut<S, R>>),
+    /// This means you can move captures out of the closure.
+    /// This is useful for function bodies where you need to return a callable future but you want to
+    /// capture arguments. TODO: this doesnt solve nested loops.
+    CallOnce(Box<FnFutOnce<S, R>>),
     CloneMyself,
     LoopYield,
     StopAllScripts,
+    StopCurrentScript,
     None,
     // TODO: This should be a Vec<Script> instead since you might want to wait on other sprites.
     //       then receive should return a vec![ioaction] and the runtime turns it into one of these or flattens it.
@@ -45,6 +50,7 @@ pub type DbgId = ();
 
 // This any is very unfortunate
 pub type FnFut<S, R> = dyn FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R>;
+pub type FnFutOnce<S, R> = dyn FnOnce(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R>;
 pub type FutOut<S, R> = (IoAction<S, R>, Callback<S, R>);
 
 pub struct Script<S: ScratchProgram<R>, R: RenderBackend<S>>  {
@@ -137,6 +143,9 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
             IoAction::Concurrent(c) => write!(f, "IoAction::Concurrent({c:?})"),
             IoAction::Sequential(c) => write!(f, "IoAction::Sequential({c:?})"),
             IoAction::sleep(s) => write!(f, "IoAction::StartSleep({s})"),
+            IoAction::StopAllScripts => write!(f, "IoAction::StopAllScripts"),
+            IoAction::StopCurrentScript => write!(f, "IoAction::StopCurrentScript"),
+            IoAction::CallOnce(_) => write!(f, "IoAction::CallOnce(FnFutOnce...)"),
         }
     }
 }

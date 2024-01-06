@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use crate::ast::{BinOp, Expr, Func, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
+use crate::infer::run_infer;
 use crate::scratch_schema::{Block, Field, Input, Operand, RawSprite, ScratchProject, StopOp};
 
 macro_rules! unwrap_input {
@@ -37,68 +38,8 @@ impl From<ScratchProject> for Project {
             proj.targets.push(result);
         }
 
-        // This feels sad and slow but it seems to not that big a difference and does improve inference coverage.
-        for i in 0..proj.targets.len() {
-            for j in 0..proj.targets[i].procedures.len() {
-                let block = proj.targets[i].procedures[j].body.clone();
-                post_pass_infer_block(&mut proj, block);
-            }
-        }
-        for i in 0..proj.targets.len() {
-            for j in 0..proj.targets[i].functions.len() {
-                let block = proj.targets[i].functions[j].body.clone();
-                post_pass_infer_block(&mut proj, block);
-            }
-        }
+        run_infer(&mut proj);
         proj
-    }
-}
-
-fn post_pass_infer_expr(project: &mut Project, expr: Expr) {
-    if let Some(t) = infer_type(project, &expr) {
-        expect_type(project, &expr, t);
-    }
-}
-
-fn post_pass_infer_block(project: &mut Project, s: Vec<Stmt>) {
-    for s in s {
-        post_pass_infer_stmt(project, s)
-    }
-}
-
-fn post_pass_infer_stmt(project: &mut Project, stmt: Stmt) {
-    match stmt {
-        Stmt::RepeatTimes(e, s) |
-        Stmt::If(e, s) |
-        Stmt::RepeatUntil(e, s) => {
-            post_pass_infer_expr(project, e);
-            post_pass_infer_block(project, s);
-        }
-        Stmt::IfElse(e, s, s1) => {
-            post_pass_infer_expr(project, e);
-            post_pass_infer_block(project, s);
-            post_pass_infer_block(project, s1);
-        }
-
-        Stmt::RepeatTimesCapture(_, _, _, _) => {}
-        Stmt::SetField(v, e) |
-        Stmt::SetGlobal(v, e) => {
-            post_pass_infer_expr(project, e.clone());
-            if let Some(t) = infer_type(project, &e) {
-                project.expect_type(v, t);
-            }
-        }
-        Stmt::ListSet(_, _, _, _) => {}
-        Stmt::ListPush(_, _, _) => {}
-        Stmt::ListClear(_, _) => {}
-        Stmt::ListRemoveIndex(_, _, _) => {}
-        Stmt::BuiltinRuntimeCall(_, _) => {}
-        Stmt::CallCustom(_, _) => {}
-        Stmt::StopScript | Stmt::Exit | Stmt::BroadcastWait(_) | Stmt::UnknownOpcode(_) => {}
-        Stmt::CloneMyself => {}
-        Stmt::WaitSeconds(e) => {
-            post_pass_infer_expr(project, e);
-        }
     }
 }
 
@@ -191,7 +132,7 @@ impl<'src> Parser<'src> {
         }
 
         Sprite {
-            functions,
+            scripts: functions,
             procedures,
             fields: self.fields.values().copied().collect(),
             name: self.target.name.clone(),
@@ -637,7 +578,7 @@ impl Project {
         VarId(self.var_names.len()-1)
     }
 
-    fn expect_type(&mut self, v: VarId, t: SType) {
+    pub(crate) fn expect_type(&mut self, v: VarId, t: SType) {
         match &self.expected_types[v.0] {
             None => {
                 self.expected_types[v.0] = Some(t);
@@ -695,7 +636,7 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
 }
 
 // This is hard to call because the expr is often in the project
-fn expect_type(project: &mut Project, e: &Expr, t: SType) {
+pub(crate) fn expect_type(project: &mut Project, e: &Expr, t: SType) {
     //println!("expect_type {:?} {:?}", t, e);
     match e {
         Expr::GetField(v) |

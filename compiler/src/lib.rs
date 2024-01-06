@@ -29,6 +29,7 @@ pub mod backend;
 
 #[cfg(feature = "cli")]
 pub mod cli;
+mod infer;
 
 pub mod wasm_interface {
     use std::alloc::{alloc, Layout};

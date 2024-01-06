@@ -33,6 +33,7 @@ fn first_images() -> anyhow::Result<()> {
     env::set_current_dir("..")?;
     println!("{:?}", env::current_dir());
 
+    // TODO: fix size so dont include the debug ui
     let (w, h) = (240usize, 180usize);
     let mut image = Image::new((w * my_tests.len().max(vendor_tests.len())) as u32, (h * 3) as u32, Rgb::black());
 
