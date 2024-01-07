@@ -94,7 +94,8 @@ pub const fn assert_nonzero_sized<T>(){
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
     pub fn then_once<F: FnOnce(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
-        assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
+        // but im using this to capture args
+        // assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
         (self, Callback::ThenOnce(Box::new(f)))
     }
 

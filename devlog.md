@@ -29,6 +29,9 @@ so now i really have to sort out the capturing params and passing down chain sin
 
 ok ive made the most insane looking code you ever did see 
 and it still doesnt work but different problem. now says "system deadlocked". 
+also linrays is all black if in async mode so fucked up. 
+lol i was still reversing actions list. 
+so im back to the same fucking problem now where they dont chain right
 
 TODO: my great nosuspend!() for extra check breaks the formatter. 
 

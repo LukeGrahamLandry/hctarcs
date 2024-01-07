@@ -630,8 +630,8 @@ impl RustStmt {
                     }
                     RustStmt::IoAction(action) => {
                         // TODO: dont be opaque. leave the .done slot and use it as a .then if the closure wouldn't need to allocate.
-                        *self = RustStmt::IoAction(format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\n({action}).done() }})))"));
-                        return;
+                        // *self = RustStmt::IoAction(format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\n({action}).done() }})))"));
+                        // return;
                     }
                     _ => {}
                 }
@@ -686,14 +686,9 @@ impl RustStmt {
 
         let mut this = RustStmt::Empty;
         mem::swap(&mut this, self);
-
-        // TODO: do better. really want to not be opaque until later
-        // let first = this.to_src().coerce_open();
-        // let second = other.to_src().coerce_open();
-        // let both = RustStmt::IoAction(format!("({CALL_ACTION_ONCE}{first}.then_once(Box::new(move |ctx: &mut Ctx<'_, '_>, this: &mut (dyn Any + 'static)| {{ let this: &mut Self = ctx.trusted_cast(this); {second}.done()  }} )) }})))"));
-        // *self = both;
-        *self = RustStmt::Block(vec![this, other])  // I think a sequence is always better than append
-        // change strategy depending if a box would need to allocate
+        assert!(!matches!(this, RustStmt::Block(_)));
+        assert!(!matches!(other, RustStmt::Block(_)));
+        *self = RustStmt::Block(vec![this, other])
     }
 
     /// None if self contains any await points.
@@ -763,10 +758,10 @@ impl RustStmt {
                 let actions: Vec<_> = new_stmts.into_iter().map(|s| s.to_src()).collect();
                 match actions.len() {
                     0 => RsAct::Empty,
-                    1 => RsAct::Closed(actions.into_iter().next().unwrap().coerce_closed()),
+                    // 1 => RsAct::Closed(actions.into_iter().next().unwrap().coerce_closed()),
                     count => {  // TODO: thhis sucks
                         let mut src = format!("(IoAction::CallOnce(Box::new(move |ctx, this|{{ IoAction::None");
-                        for stmt in actions.into_iter().rev() {
+                        for stmt in actions.into_iter() {
                             let action = match stmt {
                                 RsAct::Sync(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); nosuspend!({{ {s} }});\nIoAction::None"),
                                 RsAct::Open(s) |
@@ -854,7 +849,9 @@ impl RsAct {
     /// Useful for function bodies where you want a list of futures but not early eval those later in the list.
     fn coerce_closed(self) -> String {
         match self {
-            RsAct::Sync(s) => format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\nIoAction::None.done() }})))"),
+            RsAct::Sync(s) => {
+                format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\nIoAction::None.done() }})))")
+            }
             RsAct::Open(s) => format!("({CALL_ACTION_ONCE}{s}.done() }})))"),
             RsAct::Closed(s) => s,
             RsAct::Empty => String::from("IoAction::None")
