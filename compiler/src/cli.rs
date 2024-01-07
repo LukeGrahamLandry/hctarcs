@@ -95,7 +95,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
 
     fs::write(path!(opts.outdir, ".gitignore"), "target\nproject.json\n.DS_Store\n")?;
 
-    let cargotoml = template!(opts, "data/cargo_toml", name=&name, backend=opts.render.code_name());
+    let cargotoml = template!(opts, "data/cargo_toml", name=&name, backend=opts.render.code_name(), features=if opts.inspect { "\"inspect\", "} else { "" } );
     fs::write(path!(opts.outdir, "Cargo.toml"), cargotoml)?;
 
     // TODO: output this in the web demo too
@@ -241,6 +241,10 @@ pub struct Cli {
     /// How will the executable find image/sound files. Trade off between binary size and reliability.
     #[arg(long, default_value="embed")]
     pub assets: AssetPackaging,
+
+    /// Include debug info and enable ui display variables/futures/etc. Increases binary size and reduces performance.
+    #[arg(long)]
+    pub inspect: bool,
 
     /// What to use as the User-Agent http header when the compiler calls the scratch api.
     #[arg(long, default_value = "github/LukeGrahamLandry/hctarcs")]

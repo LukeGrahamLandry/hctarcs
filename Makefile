@@ -19,16 +19,16 @@ test: target/sanity.sb3 target/mandelbrot.sb3 target/stamp_pos.sb3
 	./target/debug/compiler -i target/tres.sb3 -o out/gen/tres --check
 
 mandelbrot: target/mandelbrot/project.json
-	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --deny-poly --run
+	cargo run --bin compiler -- -i target/mandelbrot.sb3 -o out/gen/mandelbrot --deny-poly --run --inspect
 
 tres:
-	cargo run --bin compiler -- -i target/tres.sb3 -o out/gen/tres --run
+	cargo run --bin compiler -- -i target/tres.sb3 -o out/gen/tres --run --inspect
 
 linrays:
-	cargo run --bin compiler -- -i target/linrays.sb3 -o out/gen/linrays --run
+	cargo run --bin compiler -- -i target/linrays.sb3 -o out/gen/linrays --run --inspect
 
 stamp_pos: target/stamp_pos.sb3
-	cargo run --bin compiler -- -i target/stamp_pos.sb3 -o out/gen/stamp_pos --debug
+	cargo run --bin compiler -- -i target/stamp_pos.sb3 -o out/gen/stamp_pos --debug --inspect
 
 # Note: scratch-compiler needs you in the right current directory to find asset files (and scratch needs you to have a texture even if you're just using the pen).
 target/sanity.sb3: tests/sanity.scratch

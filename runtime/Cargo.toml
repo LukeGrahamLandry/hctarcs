@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["inspect"]  # TODO: compiler flag to pass this to the run cmd and remove from defaults. build two wasm builds of each?
+default = []
 render-softbuffer = ["dep:softbuffer", "dep:winit"]
 render-notan = ["dep:notan", "dep:image"]
 render-macroquad = ["dep:macroquad", "dep:image", "dep:egui-macroquad"]
 fetch-assets = ["dep:ureq"]
-inspect = ["dep:egui"]
+inspect = ["dep:egui"]    # TODO: compiler flag to pass this to the run cmd and remove from defaults. build two wasm builds of each?
 
 [dependencies]
 rand = "0.8.5"

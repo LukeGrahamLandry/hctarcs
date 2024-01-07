@@ -1,23 +1,34 @@
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 use crate::{HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Sprite, Str, Trigger, World};
 use egui::{Button, CollapsingHeader, Direction, Grid, Layout, Separator, Ui};
+use egui::plot::{Legend, Line, Plot, PlotBounds, PlotPoints, Points};
 use crate::backend::RenderHandle;
 
 #[derive(Default)]
 pub struct Debugger<S: ScratchProgram<R>, R: RenderBackend<S>> {
     _p: PhantomData<(S, R)>,
+    frame_time: VecDeque<f32>,
+    actions: VecDeque<usize>
 }
+
+const FRAME_COUNT: f64 = 500.0;
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
     pub fn new() -> Self {
         Self {
             _p: Default::default(),
+            frame_time: vec![0.0; FRAME_COUNT as usize].into(),
+            actions: vec![0; FRAME_COUNT as usize].into(),
         }
     }
 
+    // TODO: graphs for frame time and IoActions per frame
     pub fn frame(&mut self, world: &mut World<S, R>) {
         egui_macroquad::ui(|egui_ctx| {
-            egui::Window::new("Sprites").vscroll(true).hscroll(true).default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 20.0))
+            egui::Window::new("Variables")
+                .vscroll(true).hscroll(true).default_open(false)
+                .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 20.0))
                 .show(egui_ctx, |ui| {
                     let sprites = world.bases.iter().zip(world.custom.iter()).enumerate();
                     Grid::new("vars")
@@ -46,7 +57,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                 });
 
             egui::Window::new("Async")
-                .hscroll(true).vscroll(true)
+                .hscroll(true).vscroll(true).default_open(false)
                 .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 120.0))
                 .show(egui_ctx, |ui| {
                     ui.horizontal(|ui| {
@@ -99,7 +110,60 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                     });
 
                 });
+
+            let dt = egui_ctx.input(|input| input.stable_dt);
+            self.frame_time.pop_front();
+            self.frame_time.push_back(dt * 1000.0);
+
+            self.actions.pop_front();
+            self.actions.push_back(world.futs_this_frame);
+
+            egui::Window::new("Perf")
+                .hscroll(true).vscroll(true).default_open(false)
+                .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 240.0))
+                .default_height(200.0)
+                .show(egui_ctx, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label("Frame Time");
+                        ui.horizontal(|ui|{
+                            Plot::new("frametime")
+                                .auto_bounds_y().include_y(0.0).include_y(50.0)
+                                .allow_drag(false).allow_zoom(false).allow_scroll(false)
+                                .show(ui, |plot| {
+                                    // plot.set_plot_bounds(PlotBounds::from_min_max([0.0, 0.0], [FRAME_COUNT, 100.0]));
+                                    let points: PlotPoints = self.frame_time
+                                        .iter().enumerate()
+                                        .map(|(i, v)| {
+                                            [i as f64, *v as f64]
+                                        }).collect();
+
+                                    plot.line(Line::new(points));
+                                });
+                        });
+
+                        ui.label("Futures Resolved");
+
+                        ui.horizontal(|ui|{
+                            Plot::new("ioactions")
+                                .auto_bounds_y().include_y(0.0).include_y(10.0)
+                                .allow_drag(false).allow_zoom(false).allow_scroll(false)
+                                .show(ui, |plot| {
+                                    let points: PlotPoints = self.actions
+                                        .iter().enumerate()
+                                        .map(|(i, v)| {
+                                            [i as f64, *v as f64]
+                                        }).collect();
+
+                                    plot.line(Line::new(points));
+                                });
+                        });
+
+                    })
+
+                });
         });
+
+
 
         egui_macroquad::draw();
     }

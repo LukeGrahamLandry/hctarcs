@@ -1,9 +1,10 @@
 use std::any::Any;
 use std::fmt::Debug;
 use crate::backend::RenderBackend;
-use crate::builtins::FrameCtx;
 use crate::callback::FnFut;
 use crate::{Poly, ScratchProgram};
+
+#[cfg(feature = "inspect")]
 use crate::ui::{VarBorrow, VarBorrowMut};
 
 #[derive(Clone, Debug)]

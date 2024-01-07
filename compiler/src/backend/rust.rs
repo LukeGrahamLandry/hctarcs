@@ -602,9 +602,14 @@ impl RustStmt {
 
     fn push(&mut self, mut other: Self) {
         if !matches!(self, RustStmt::Sync(_) | RustStmt::Empty) && self.is_sync() {
-            let mut this = RustStmt::Empty;
-            mem::swap(&mut this, self);
-            *self = RustStmt::Sync(this.to_sync().unwrap());
+            let mut x = RustStmt::Empty;
+            mem::swap(&mut x, self);
+            *self = RustStmt::Sync(x.to_sync().unwrap());
+        }
+        if !matches!(other, RustStmt::Sync(_) | RustStmt::Empty) && other.is_sync() {
+            let mut x = RustStmt::Empty;
+            mem::swap(&mut x, &mut other);
+            other = RustStmt::Sync(x.to_sync().unwrap());
         }
         match self {
             RustStmt::Sync(s) => {
@@ -620,13 +625,37 @@ impl RustStmt {
                         mem::swap(self, &mut other);
                         return;
                     }
+                    RustStmt::IoAction(action) => {
+                        // TODO: dont be opaque. leave the .done slot and use it as a .then if the closure wouldn't need to allocate.
+                        *self = RustStmt::IoAction(format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\n({action}).done() }})))"));
+                        return;
+                    }
                     _ => {}
                 }
             }
             RustStmt::Block(body) => {
+                assert!(!body.is_empty(), "TODO: use Empty");
                 match other {
-                    RustStmt::Block(others) => body.extend(others.into_iter()),
-                    s => body.push(s),
+                    RustStmt::Block(others) => {
+                        for s in others {
+                            self.push(s);
+                        }
+                    },
+                    s => {  // Collapse runs of sync stmts.
+                        // TODO: HACK to use same joining logic as this whole fn on each add.
+                        let last = body.last_mut().unwrap();
+                        last.push(s);
+                        if matches!(last, RustStmt::Block(_)) {
+                            let last = body.pop().unwrap();
+                            match last {
+                                RustStmt::Block(stmts) => {
+                                    body.extend(stmts.into_iter())
+                                }
+                                _ => unreachable!()
+                            }
+
+                        }
+                    },
                 }
                 return;
             }
@@ -642,11 +671,20 @@ impl RustStmt {
             }
         }
 
+        match other {
+            RustStmt::Block(body) => {
+                for stmt in body.into_iter() {
+                    self.push(stmt);
+                }
+                return;
+            }
+            _ => {}
+        }
+
         let mut this = RustStmt::Empty;
         mem::swap(&mut this, self);
-        *self = RustStmt::Block(vec![this, other])
+        *self = RustStmt::Block(vec![this, other])  // I think a sequence is always better than append
         // change strategy depending if a box would need to allocate
-        // still need to handle opaque io actions like sleep. i think sequence is always better than append.
     }
 
     // TODO: !! check version that doesnt require clone. i call this so often.
@@ -787,13 +825,6 @@ impl RsAct {
             RsAct::Closed(s) => s,
             RsAct::Empty => String::from("IoAction::None")
         }
-    }
-}
-
-fn collapse_if_sync(stmts: Vec<RustStmt>) -> Vec<RustStmt> {
-    match RustStmt::Block(stmts.clone()).to_sync() {  // TODO: separate is_sync so dont have to clone
-        None => stmts,  // TODO: can do better, collapse any runs of sync stmts
-        Some(s) => vec![RustStmt::Sync(s)],
     }
 }
 

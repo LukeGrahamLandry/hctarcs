@@ -127,8 +127,11 @@ impl<'a> Infer<'a> {
             }
             Stmt::StopScript => {
                 // This is only async if fn is already async so dont mark here.
-                // TODO: this gives me a way to toggle if linrays uses async loops which means i can debug why they dont work
-                self.mark_async();
+                // TODO: if i incorrectly do this, linrays does 700k futs/frame and is really slow.
+                //       use that as a test to optimise when only real ioaction is deep inner function.
+                //       allow functions that optionally return an ioaction. not sure i can really get that to work for that case tho.
+                // TODO: comment out when done testing
+                // self.mark_async();
             }
             Stmt::BroadcastWait(_) | Stmt::Exit => {
                 self.mark_async();

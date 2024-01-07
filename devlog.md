@@ -1,4 +1,10 @@
 
+
+Noticed making it think stop this script is async makes linrays really slow and added a graph of how many futures handled each frame. 
+Turns out its 700k... oops. So yeah need to work on that. 
+Should allow in between functions that don't need to do any io actions but call a function that does 
+at the end to not be themselves wrapped in a future. 
+
 ## async tres (Jan 6)
 
 Removed the sync version of receive since I don't bother using it ever for fully sync projects. You just wrap the message handler in a single future. (That's not even an allocation since it wont capture anything, its one fn ptr indirection).
