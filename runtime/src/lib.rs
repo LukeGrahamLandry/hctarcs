@@ -150,7 +150,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         loop {
             let mut progress = true;
             // TODO: tune this number
-            for _ in 0..100 {  // I want to check the time less often
+            for _ in 0..300 {  // I want to check the time less often
                 progress = self.poll(render);
                 if !progress {
                     break
@@ -204,16 +204,18 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                         return /*from closure*/ false
                     },
                     Some(action) => match action {  // Poll the future.
-                        IoAction::Call(mut f) => {  // Call some other async function.
-                            let (action, next) = f(ctx, custom);
-                            // Its a stack, so push the next handler and then push the action that must resolve before calling it.
-                            match next {
-                                Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
-                                Callback::ThenOnce(callback) => c.next.push(IoAction::CallOnce(callback)),
-                                Callback::Again => c.next.push(IoAction::Call(f)),
-                                Callback::Done => {}
+                        IoAction::Loop(mut f) => {  // Call some other async function.
+                            // Its a stack, so push the next loop iteration and then push the body that must resolve before calling it.
+                            match f(ctx, custom) {
+                                LoopRes::Continue(callback) => {
+                                    c.next.push(IoAction::Loop(f));
+                                    c.next.push(callback);
+                                }
+                                LoopRes::Break(callback) => {
+                                    c.next.push(callback);
+                                }
                             }
-                            c.next.push(action);
+
                             made_progress = true;
                             break
                         },
@@ -222,7 +224,6 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
 
                             // Its a stack, so push the next handler and then push the action that must resolve before calling it.
                             match next {
-                                Callback::Then(callback) => c.next.push(IoAction::Call(callback)),
                                 Callback::ThenOnce(callback) => c.next.push(IoAction::CallOnce(callback)),
                                 Callback::Again => unreachable!("Tried to use IoAction::CallOnce for loop body."),
                                 Callback::Done => {}
@@ -231,15 +232,15 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             break
                         }
-                        IoAction::UserFnCall(f) => {
-                            c.next.push(IoAction::CallMarker);
+                        IoAction::UserFnBody(f, name) => {
+                            c.next.push(IoAction::CallMarker(name));
                             let (action, next) = f(ctx, custom);
                             assert!(matches!(next, Callback::Done));
                             c.next.push(action);
                             made_progress = true;
                             break
                         }
-                        IoAction::CallMarker => {
+                        IoAction::CallMarker(_) => {
                             continue
                         }
                         IoAction::StopCurrentScript => {
@@ -248,7 +249,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                                 match c.next.pop() {
                                     None => return false,
                                     Some(a) => {
-                                        if let IoAction::CallMarker = a {
+                                        if let IoAction::CallMarker(_) = a {
                                             break
                                         } else {
                                             // Continue

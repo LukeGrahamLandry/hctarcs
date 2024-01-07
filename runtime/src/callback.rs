@@ -23,17 +23,17 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     Ask(String, usize),  // Tell the event loop to request user input. Replaced with WaitForAsk(_).
     WaitForAsk(usize), // sprite id
     BroadcastWait(S::Msg),
-    Call(Box<FnFut<S, R>>),
+    Loop(Box<FnFutLoop<S, R>>),
     /// This means you can move captures out of the closure.
     /// This is useful for function bodies where you need to return a callable future but you want to
     /// capture arguments. TODO: this doesnt solve nested loops.
     CallOnce(Box<FnFutOnce<S, R>>),
-    UserFnCall(Box<FnFutOnce<S, R>>),
+    UserFnBody(Box<FnFutOnce<S, R>>, &'static str),  // TODO: make this an index
     CloneMyself,
     LoopYield,
     StopAllScripts,
     StopCurrentScript,
-    CallMarker,
+    CallMarker(&'static str),  // TODO: make this an index
     None,
     // TODO: This should be a Vec<Script> instead since you might want to wait on other sprites.
     //       then receive should return a vec![ioaction] and the runtime turns it into one of these or flattens it.
@@ -45,6 +45,11 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     ConcurrentScripts(Vec<Script<S, R>>)
 }
 
+pub enum LoopRes<S: ScratchProgram<R>, R: RenderBackend<S>> {
+    Continue(IoAction<S, R>),
+    Break(IoAction<S, R>),
+}
+
 // TODO: this can go on FutOut for breakpoints and is zero sized in not(inspect)
 #[cfg(feature = "inspect")]
 pub type DbgId = usize;
@@ -53,6 +58,7 @@ pub type DbgId = ();
 
 // This any is very unfortunate
 pub type FnFut<S, R> = dyn FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R>;
+pub type FnFutLoop<S, R> = dyn FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> LoopRes<S, R>;
 pub type FnFutOnce<S, R> = dyn FnOnce(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R>;
 pub type FutOut<S, R> = (IoAction<S, R>, Callback<S, R>);
 
@@ -65,7 +71,7 @@ pub struct Script<S: ScratchProgram<R>, R: RenderBackend<S>>  {
 // Necessary because closures can't return a reference to themselves.
 pub enum Callback<S: ScratchProgram<R>, R: RenderBackend<S>> {
     /// Resolved. Call this action next.
-    Then(Box<FnFut<S, R>>),  // TODO: this could be an ioaction and make everything more consistant
+    // TODO: this could be an ioaction and make everything more consistant
     ThenOnce(Box<FnFutOnce<S, R>>),
     /// Not yet resolved. Must call the same action again. (ex. body of loop).
     Again,
@@ -87,22 +93,10 @@ pub const fn assert_nonzero_sized<T>(){
 }
 
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
-    // TODO: hefty type signature
-    pub fn then<F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
-        assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
-        (self, Callback::Then(Box::new(f)))
-    }
-
-    pub fn then_boxed(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> FutOut<S, R> {
-        (self, Callback::Then(Box::new(f)))
-    }
-
     pub fn then_once<F: FnOnce(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static>(self, f: F) -> FutOut<S, R> {
         assert_zero_sized::<F>();  // If no captures, we dont have to allocate. (Note: Rust uses fat ptrs instead of storing vtable ptr in the value)
         (self, Callback::ThenOnce(Box::new(f)))
     }
-
-
 
     pub fn again(self) -> FutOut<S, R> {
         (self, Callback::Again)
@@ -116,10 +110,6 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> IoAction<S, R> {
     // (IoAction is never zero sized so boxing trick doesn't help)
     pub fn append(self, other: IoAction<S, R>) -> IoAction<S, R> {
         IoAction::Sequential(vec![self, other])
-    }
-
-    pub fn append_call(self, f: impl FnMut(&mut FrameCtx<S, R>, &mut dyn Any) -> FutOut<S, R> + 'static) -> IoAction<S, R> {
-        IoAction::Sequential(vec![self, IoAction::Call(Box::new(f))])
     }
 }
 
@@ -135,23 +125,23 @@ macro_rules! nosuspend {
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            IoAction::WaitUntil(time) => write!(f, "IoAction::WaitUntil({time:?})"),
-            IoAction::Ask(q, id) => write!(f, "IoAction::Ask({q:?}, {id})"),
-            IoAction::WaitForAsk(id) => write!(f, "IoAction::WaitForAsk({id})"),
-            IoAction::BroadcastWait(msg) => write!(f, "IoAction::BroadcastWait({msg:?})"),
-            IoAction::Call(_) => write!(f, "IoAction::Call(FnFut...)"),
-            IoAction::CloneMyself => write!(f, "IoAction::CloneMyself"),
-            IoAction::LoopYield => write!(f, "IoAction::LoopYield"),
-            IoAction::None => write!(f, "IoAction::None"),
-            IoAction::Concurrent(c) => write!(f, "IoAction::Concurrent({c:?})"),
-            IoAction::Sequential(c) => write!(f, "IoAction::Sequential({c:?})"),
-            IoAction::SleepSecs(s) => write!(f, "IoAction::StartSleep({s})"),
-            IoAction::StopAllScripts => write!(f, "IoAction::StopAllScripts"),
-            IoAction::StopCurrentScript => write!(f, "IoAction::StopCurrentScript"),
-            IoAction::CallOnce(_) => write!(f, "IoAction::CallOnce(FnFutOnce...)"),
-            IoAction::UserFnCall(_) => write!(f, "IoAction::UserFnCall(FnFutOnce...)"),
-            IoAction::ConcurrentScripts(s) => write!(f, "IoAction::ConcurrentScripts(...)"),
-            IoAction::CallMarker =>  write!(f, "IoAction::CallMarker"),
+            IoAction::WaitUntil(time) => write!(f, "WaitUntil({time:?})"),
+            IoAction::Ask(q, id) => write!(f, "Ask({q:?}, {id})"),
+            IoAction::WaitForAsk(id) => write!(f, "WaitForAsk({id})"),
+            IoAction::BroadcastWait(msg) => write!(f, "BroadcastWait({msg:?})"),
+            IoAction::Loop(_) => write!(f, "Loop(...)"),
+            IoAction::CloneMyself => write!(f, "CloneMyself"),
+            IoAction::LoopYield => write!(f, "LoopYield"),
+            IoAction::None => write!(f, "None"),
+            IoAction::Concurrent(c) => write!(f, "Concurrent({c:?})"),
+            IoAction::Sequential(c) => write!(f, "Sequential({c:?})"),
+            IoAction::SleepSecs(s) => write!(f, "StartSleep({s})"),
+            IoAction::StopAllScripts => write!(f, "StopAllScripts"),
+            IoAction::StopCurrentScript => write!(f, "StopCurrentScript"),
+            IoAction::CallOnce(_) => write!(f, "CallOnce(FnFutOnce...)"),
+            IoAction::UserFnBody(_, name) => write!(f, "UserFnBody({name})"),
+            IoAction::ConcurrentScripts(s) => write!(f, "ConcurrentScripts(...)"),
+            IoAction::CallMarker(name) =>  write!(f, "CallMarker({name})"),
         }
     }
 }
@@ -159,10 +149,34 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
 impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for Callback<S, R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Callback::Then(s) =>write!(f, "Callback::Then(FnFut...)"),
             Callback::Again => write!(f, "Callback::Again"),
             Callback::Done => write!(f, "Callback::Done"),
             Callback::ThenOnce(s) =>write!(f, "Callback::ThenOnce(FnFutOnce...)"),
         }
     }
 }
+
+
+// #[macro_export]
+// macro_rules! fut {
+//     ($($part:stmt);*; $res:expr) => {{
+//         move |ctx, this| {
+//             let this: &mut Self = ctx.trusted_cast(this);
+//             $($part);*;
+//             $res
+//         }
+//     }};
+// }
+
+// cant use this because it breaks formatter?
+#[macro_export]
+macro_rules! async_fn {
+    ($name:expr, $body:block) => {{
+        IoAction::UserFnBody(Box::new(move |ctx, this| {{
+            let this: &mut Self = ctx.trusted_cast(this);
+            let __inner: IoAction<Stage, Backend> = $body;
+            __inner.done()
+        }}), $name)
+    }};
+}
+
