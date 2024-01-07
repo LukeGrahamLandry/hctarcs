@@ -20,7 +20,7 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     // TODO: compiler doesnt emit these, it calls the context method.
     // TODO: its awkward that I have this fusion between requests and waiting for requests
     /// https://en.scratch-wiki.info/wiki/Ask_()_and_Wait_(block)
-    Ask(String, usize),  // Tell the event loop to request user input. Replaced with WaitForAsk(_).
+    Ask(String),  // Tell the event loop to request user input. Replaced with WaitForAsk(_).
     WaitForAsk(usize), // sprite id
     BroadcastWait(S::Msg),
     Loop(Box<FnFutLoop<S, R>>),
@@ -127,7 +127,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             IoAction::WaitUntil(time) => write!(f, "WaitUntil({time:?})"),
-            IoAction::Ask(q, id) => write!(f, "Ask({q:?}, {id})"),
+            IoAction::Ask(q) => write!(f, "Ask({q:?})"),
             IoAction::WaitForAsk(id) => write!(f, "WaitForAsk({id})"),
             IoAction::BroadcastWait(msg) => write!(f, "BroadcastWait({msg:?})"),
             IoAction::Loop(_) => write!(f, "Loop(...)"),

@@ -299,6 +299,9 @@ impl<'src> Emit<'src> {
             Stmt::WaitSeconds(seconds) => {
                 return RustStmt::IoAction(format!("IoAction::SleepSecs({})", self.emit_expr(seconds, Some(SType::Number))))
             }
+            Stmt::AskAndWait(question) => {
+                return RustStmt::IoAction(format!("IoAction::Ask({}.as_ref().into())", self.emit_expr(question, Some(SType::Str))))
+            }
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         })
     }

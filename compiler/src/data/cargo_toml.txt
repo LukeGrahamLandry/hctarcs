@@ -5,11 +5,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = [{maybe_inspect}]
 inspect = ["runtime/inspect"]
 
 [dependencies]
-runtime = {{ path = "../../../runtime", features=["render-{backend}", {features}] }}  # TODO: compiler arg for local path or get from github
+runtime = {{ path = "../../../runtime", features=["render-{backend}"] }}  # TODO: compiler arg for local path or get from github
 # TODO: feature fetch-assets
 
 # Settings here will be ignored if you're using a cargo workspace.

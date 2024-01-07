@@ -9,7 +9,8 @@ use crate::backend::RenderHandle;
 pub struct Debugger<S: ScratchProgram<R>, R: RenderBackend<S>> {
     _p: PhantomData<(S, R)>,
     frame_time: VecDeque<f32>,
-    actions: VecDeque<usize>
+    actions: VecDeque<usize>,
+    answer: String,
 }
 
 const FRAME_COUNT: f64 = 500.0;
@@ -20,12 +21,35 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
             _p: Default::default(),
             frame_time: vec![0.0; FRAME_COUNT as usize].into(),
             actions: vec![0; FRAME_COUNT as usize].into(),
+            answer: "".to_string(),
         }
     }
 
     // TODO: graphs for frame time and IoActions per frame
     pub fn frame(&mut self, world: &mut World<S, R>) {
         egui_macroquad::ui(|egui_ctx| {
+
+            egui::Window::new("Ask")
+                .hscroll(true).vscroll(true)
+                .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 0.0))
+                .show(egui_ctx, |ui| {
+                    match &world.current_question {
+                        None => {
+                            ui.label("No question right now...");
+                        }
+                        Some(question) => {
+                            ui.label(question);
+                            ui.add(egui::TextEdit::singleline(&mut self.answer));
+                            if ui.button("Submit").clicked() {
+                                assert!(world.last_answer.is_none());
+                                world.last_answer = Some(self.answer.clone());
+                                self.answer = String::new();
+                                world.current_question = None;
+                            }
+                        }
+                    }
+                });
+
             egui::Window::new("Variables")
                 .vscroll(true).hscroll(true).default_open(false)
                 .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 20.0))
@@ -43,11 +67,27 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                             });
                             ui.end_row();
                             for (i, (base, user)) in sprites {
+                                // println!("{i} {:?}",  user.get_var_names());
                                 CollapsingHeader::new(format!("[{}] pos:({:.0}, {:.0}), dir:{:.0}, size:{:.0}% pen:({}, size:{}) costume:{}",
                                                               base._uid, base.x, base.y, base.direction, base.size_frac * 100.0, base.pen.active, base.pen.size, base.costume)
                                 ).show(ui, |ui| {
                                     for (i, name) in user.get_var_names().into_iter().enumerate() {
-                                        ui.label(format!("{name} = {:?}", user.var(i)));
+                                        match user.var(i) {
+                                            VarBorrow::List(lst) => {
+                                                CollapsingHeader::new(format!("{name} = List({})", lst.len())
+                                                ).show(ui, |ui| {
+                                                    for (i, value) in lst.iter().enumerate() {
+                                                        ui.label(format!("[{i}] {value:?}"));
+                                                        ui.end_row();
+                                                    }
+                                                });
+                                            }
+                                            other => {
+                                                ui.label(format!("{name} = {:?}", other));
+                                            }
+                                        }
+
+
                                         ui.end_row();
                                     }
                                 });

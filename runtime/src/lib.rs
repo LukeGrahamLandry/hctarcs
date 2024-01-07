@@ -297,16 +297,16 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                                 continue
                             }
                         }
-                        IoAction::Ask(question, id) => {
+                        IoAction::Ask(question) => {
                             match self.current_question  {
                                 None => {
                                     self.current_question = Some(question);
                                     made_progress = true;
-                                    c.next.push(IoAction::WaitForAsk(id));
+                                    c.next.push(IoAction::WaitForAsk(c.owner));
                                     break
                                 }
                                 Some(_) => { // Scratch only shows one question at a time.
-                                    c.next.push(IoAction::Ask(question, id));
+                                    c.next.push(IoAction::Ask(question));
                                     break
                                 }
                             }

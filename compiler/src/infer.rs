@@ -131,10 +131,14 @@ impl<'a> Infer<'a> {
                 //       use that as a test to optimise when only real ioaction is deep inner function.
                 //       allow functions that optionally return an ioaction. not sure i can really get that to work for that case tho.
                 // TODO: comment out when done testing
-                self.mark_async();
+                // self.mark_async();
             }
             Stmt::BroadcastWait(_) | Stmt::Exit => {
                 self.mark_async();
+            }
+            Stmt::AskAndWait(e) => {
+                self.mark_async();
+                self.infer_expr(e);
             }
         }
     }

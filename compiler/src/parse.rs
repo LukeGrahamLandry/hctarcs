@@ -299,6 +299,10 @@ impl<'src> Parser<'src> {
                 let s = self.parse_t(DURATION, SType::Number);
                 Stmt::WaitSeconds(s)
             }),
+            "sensing_askandwait" =>  unwrap_input!(block, Input::Ask { QUESTION } => {
+                let s = self.parse_t(QUESTION, SType::Str);
+                Stmt::AskAndWait(s)
+            }),
             _ => if let Some(proto) = runtime_prototype(block.opcode.as_str()) {
                 let args = match proto {
                     &[] => vec![],

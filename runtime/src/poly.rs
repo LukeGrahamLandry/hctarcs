@@ -150,6 +150,10 @@ impl<T: Clone + Debug> List<T> {
             self.0.insert(index as usize, value);
         }
     }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item=&T> {
+        self.0.iter()
+    }
 }
 
 impl<T: Clone + Debug + ConstEmpty> Index<f64> for List<T> {

@@ -95,7 +95,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
 
     fs::write(path!(opts.outdir, ".gitignore"), "target\nproject.json\n.DS_Store\n")?;
 
-    let cargotoml = template!(opts, "data/cargo_toml", name=&name, backend=opts.render.code_name(), features=if opts.inspect { "\"inspect\", "} else { "" } );
+    let cargotoml = template!(opts, "data/cargo_toml", name=&name, backend=opts.render.code_name(), maybe_inspect=if opts.inspect { "\"inspect\", "} else { "" } );
     fs::write(path!(opts.outdir, "Cargo.toml"), cargotoml)?;
 
     // TODO: output this in the web demo too

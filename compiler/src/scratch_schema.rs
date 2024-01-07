@@ -143,6 +143,9 @@ pub enum Input {
     Time {
         DURATION: Operand,
     },
+    Ask {
+        QUESTION: Operand
+    },
     // TODO: how to match empty?
     // Empty {},  // This matches everything, not just empty
     Named(HashMap<String, Operand>),

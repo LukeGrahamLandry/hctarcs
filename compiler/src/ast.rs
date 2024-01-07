@@ -58,6 +58,7 @@ pub enum Stmt {
 
     CloneMyself,
     WaitSeconds(Expr),
+    AskAndWait(Expr),
 
     // Variables
     SetField(VarId, Expr),
