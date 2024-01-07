@@ -32,6 +32,7 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     CloneMyself,
     LoopYield,
     StopAllScripts,
+    /// Pop back up the closest CallMarker
     StopCurrentScript,
     CallMarker(&'static str),  // TODO: make this an index
     None,

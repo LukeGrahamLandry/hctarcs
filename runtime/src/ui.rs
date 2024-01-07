@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use crate::{HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Sprite, Str, Trigger, World};
+use crate::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Sprite, Str, Trigger, World};
 use egui::{Button, CollapsingHeader, Direction, Grid, Layout, Separator, Ui};
 use egui::plot::{Legend, Line, Plot, PlotBounds, PlotPoints, Points};
 use crate::backend::RenderHandle;
@@ -28,27 +28,21 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
     // TODO: graphs for frame time and IoActions per frame
     pub fn frame(&mut self, world: &mut World<S, R>) {
         egui_macroquad::ui(|egui_ctx| {
-
-            egui::Window::new("Ask")
-                .hscroll(true).vscroll(true)
-                .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 0.0))
-                .show(egui_ctx, |ui| {
-                    match &world.current_question {
-                        None => {
-                            ui.label("No question right now...");
+            if world.current_question.is_some() {
+                egui::Window::new("Ask")
+                    .hscroll(true).vscroll(true)
+                    .default_pos((0.0, HALF_SCREEN_HEIGHT as f32))
+                    .show(egui_ctx, |ui| {
+                        ui.label(world.current_question.as_ref().unwrap());
+                        ui.add(egui::TextEdit::singleline(&mut self.answer));
+                        if ui.button("Submit").clicked() {
+                            assert!(world.last_answer.is_none());
+                            world.last_answer = Some(self.answer.clone());
+                            self.answer = String::new();
+                            world.current_question = None;
                         }
-                        Some(question) => {
-                            ui.label(question);
-                            ui.add(egui::TextEdit::singleline(&mut self.answer));
-                            if ui.button("Submit").clicked() {
-                                assert!(world.last_answer.is_none());
-                                world.last_answer = Some(self.answer.clone());
-                                self.answer = String::new();
-                                world.current_question = None;
-                            }
-                        }
-                    }
-                });
+                    });
+            }
 
             egui::Window::new("Variables")
                 .vscroll(true).hscroll(true).default_open(false)
@@ -149,6 +143,13 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                             }).response
                     });
 
+                });
+
+            egui::Window::new("Credits")
+                .hscroll(true).vscroll(true).default_open(false)
+                .default_pos(((HALF_SCREEN_WIDTH * 2.0) as f32 + 20.0, 350.0))
+                .show(egui_ctx, |ui| {
+                    ui.label(S::get_credits());
                 });
 
             let dt = egui_ctx.input(|input| input.stable_dt);

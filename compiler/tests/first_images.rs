@@ -21,6 +21,7 @@ const my_tests: &[T] = &[
 // TODO: add tres once async works (rn it would just hang waiting for input)
 const vendor_tests: &[T] = &[
     T { name: "linrays", deny_async: true, deny_poly: true },
+    T { name: "tres", deny_async: false, deny_poly: false },
     ];
 
 const temp_tests: &[T] = &[
@@ -34,6 +35,7 @@ fn first_images() -> anyhow::Result<()> {
     println!("{:?}", env::current_dir());
 
     // TODO: fix size so dont include the debug ui
+    let (view_w, view_h) = (480 * 2, 360 * 2);
     let (w, h) = (240usize, 180usize);
     let mut image = Image::new((w * my_tests.len().max(vendor_tests.len())) as u32, (h * 3) as u32, Rgb::black());
 
@@ -46,7 +48,7 @@ fn first_images() -> anyhow::Result<()> {
 
             // TODO: put name as text on the image. need to get a font.
             if let Ok(img) = Image::open(&format!("out/gen/{}/frame.png", test.name)) {
-                image.paste((x * w) as u32, (y * h) as u32, &img.resized(w as u32, h as u32, ResizeAlgorithm::Nearest));
+                image.paste((x * w) as u32, (y * h) as u32, &img.cropped(0, 0, view_w, view_h).resized(w as u32, h as u32, ResizeAlgorithm::Nearest));
             }
         }
     }

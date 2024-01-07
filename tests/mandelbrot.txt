@@ -9,6 +9,9 @@ ignore(WIP UNUSED thus far)
 ignore(test loop)
 ignore(0 1 2 3 4 5 6 :loop dup println 0 > ":loop" jump-if)
 
+ignore(0 :loop 1 + dup 50000 < ":loop" jump-if "done" println)
+
+
 vec-new
 5 vec-push
 

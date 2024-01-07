@@ -98,12 +98,12 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         self.render.pen_stamp(self.pos(), self.sprite.costume, self.sprite.size_frac);
     }
 
-    pub fn looks_hide(&self) {
-        println!("looks_hide")
+    pub fn looks_hide(&mut self) {
+        self.sprite.hidden = true;
     }
 
-    pub fn pen_clear(&self) {
-        println!("pen_clear")
+    pub fn pen_clear(&mut self) {
+        self.render.pen_clear();
     }
 
     pub fn looks_setsizeto(&mut self, size: f64) {

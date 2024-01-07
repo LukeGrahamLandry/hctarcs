@@ -73,7 +73,9 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             for sprite in &world.bases {
                 // TODO: fix wierd coordinate space
                 // println!("{:?}", sprite);
-                handle.pen_stamp((sprite.x + HALF_SCREEN_WIDTH, sprite.y - HALF_SCREEN_HEIGHT), sprite.costume, sprite.size_frac);
+                if !sprite.hidden {
+                    handle.pen_stamp((sprite.x + HALF_SCREEN_WIDTH, sprite.y - HALF_SCREEN_HEIGHT), sprite.costume, sprite.size_frac);
+                }
             }
 
             if is_key_down(KeyCode::Escape) {

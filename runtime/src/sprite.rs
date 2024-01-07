@@ -20,6 +20,7 @@ pub struct SpriteBase {
     pub last_answer: String,
     pub costume: usize,
     pub size_frac: f64,
+    pub hidden: bool
 }
 
 #[derive(Clone, Default, Debug)]
@@ -85,6 +86,7 @@ impl Default for SpriteBase {
             last_answer: "".to_string(),
             costume: 0,
             size_frac: 2.0,  // TODO: does custom json have a scale?
+            hidden: false,
         }
     }
 }

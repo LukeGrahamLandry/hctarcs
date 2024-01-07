@@ -61,7 +61,6 @@ impl<'a> Infer<'a> {
         if let Some((target_i, proc_i)) = self.current_fn {
             let proc = &mut self.project.targets[target_i].procedures[proc_i];
             if !proc.needs_async {
-                println!("mark_async {}", proc.name);
                 proc.needs_async = true;
                 self.dirty += 1;
             }
@@ -80,6 +79,7 @@ impl<'a> Infer<'a> {
         }
     }
 
+    // TODO: infer_expr the rest
     fn infer_stmt(&mut self, stmt: Stmt) {
         match stmt {
             Stmt::RepeatTimes(e, s) |
@@ -94,7 +94,7 @@ impl<'a> Infer<'a> {
                 self.infer_block(s1);
             }
 
-            Stmt::RepeatTimesCapture(e, s, v, scope) => {
+            Stmt::RepeatTimesCapture(e, s, v, _) => {
                 self.infer_expr(e);
                 self.infer_block(s);
                 self.project.expect_type(v, SType::Number);

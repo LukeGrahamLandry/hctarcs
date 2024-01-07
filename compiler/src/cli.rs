@@ -115,6 +115,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         }
     }
 
+    let title = &name;
     let warning = template!(opts, "data/macroquad_warning", );
     if opts.web {
         let mut cmd = Command::new("cargo");
@@ -158,7 +159,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
 
         let index = path!(web_folder, "index.html");
 
-        let data = template!(opts, "data/macroquad_index", mq_js_bundle_url="./mq_js_bundle.js", hint=BREAD_CRUMBS, warning_comment=warning, name=&name);
+        let data = template!(opts, "data/macroquad_index", mq_js_bundle_url="./mq_js_bundle.js", hint=BREAD_CRUMBS, warning_comment=warning, name=&name, title=title);
         fs::write(&index, data)?;
 
         let macroquad = match opts.get_template_path("mq_js_bundle") {
@@ -185,7 +186,7 @@ pub fn run(opts: Cli) -> anyhow::Result<()> {
         println!("{warning}");
     }
 
-    if opts.run || opts.debug || opts.first_frame_only{
+    if opts.run || opts.debug || opts.first_frame_only {
         let mut cmd = Command::new("cargo");
         cmd.arg("run");
         if !opts.debug {
