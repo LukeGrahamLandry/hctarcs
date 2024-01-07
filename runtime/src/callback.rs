@@ -42,7 +42,7 @@ pub enum IoAction<S: ScratchProgram<R>, R: RenderBackend<S>> {
     /// This is immediately expanded by the runtime into the current script.
     /// It's just a way to do multiple things where one was expected.
     Sequential(Vec<IoAction<S, R>>),
-    ConcurrentScripts(Vec<Script<S, R>>)
+    ConcurrentScripts(Vec<Script<S, R>>),
 }
 
 pub enum LoopRes<S: ScratchProgram<R>, R: RenderBackend<S>> {

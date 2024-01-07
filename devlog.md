@@ -5,6 +5,33 @@ Turns out its 700k... oops. So yeah need to work on that.
 Should allow in between functions that don't need to do any io actions but call a function that does 
 at the end to not be themselves wrapped in a future. 
 
+progress on tres debugging: 
+now think problem is not my loops.
+find_name_in_directory is putting -1 on the stack instead of 11. so the actual miscompile is in there?
+(if all inputs are same)
+same input stack. both have "bin" as name args. 
+but wait no, thats a sync function, the code is the same. 
+so wrong thing in the heap somewhere? 
+yeah async has end=0, sync has end=1
+sync has `heap[8]=11`, async has  `heap[8]=Empty`
+sync is coming in to resolve_path with Vec, 1, 11 on the heap but async has Vec, 0, Empty.
+So async didnt read the path?
+vec_with_capacity is same with both.
+create_fs is where it puts things on the heap.
+create_file is the difference? 
+async doesnt call push_vec before resolve_path
+when async gets to add_ptr_to_directory, dir is always 0.
+AYY found problem.
+was really obvious idk why im dumb.
+a call to a async user function is not closed because the arg values might be expression that change before you reach that point
+sadly for my sanity i left a `// TODO: untested` comment right where the problem was. 
+so now i really have to sort out the capturing params and passing down chain since every call is wrapped. 
+
+ok ive made the most insane looking code you ever did see 
+and it still doesnt work but different problem. now says "system deadlocked". 
+
+TODO: my great nosuspend!() for extra check breaks the formatter. 
+
 ## async tres (Jan 6)
 
 Removed the sync version of receive since I don't bother using it ever for fully sync projects. You just wrap the message handler in a single future. (That's not even an allocation since it wont capture anything, its one fn ptr indirection).

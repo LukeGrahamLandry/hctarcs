@@ -8,6 +8,7 @@ use sprite::*;
 use poly::*;
 use backend::{{RenderBackend, RenderHandle}};
 use runtime::builtins::*;
+use std::any::Any;
 type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
 
 // The type imported here must also be enabled in the `runtime` crate with a feature flag.

@@ -15,7 +15,7 @@ impl<S: ScratchProgram<BackendImpl<S>>> RenderBackend<S> for BackendImpl<S> {
 
     fn run() {
         // TODO: resizable so debugger is less painful
-        // TODO: dont include padding if not inspect mode. 
+        // TODO: dont include padding if not inspect mode.
         let (window_width, window_height) = ((HALF_SCREEN_WIDTH * 2.0) as i32 + 400, (HALF_SCREEN_HEIGHT * 2.0) as i32 + 200);
         macroquad::Window::from_config(Conf {
             window_title: "Hctarcs: macroquad".to_string(),

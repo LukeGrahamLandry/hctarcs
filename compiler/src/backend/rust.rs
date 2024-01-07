@@ -272,7 +272,10 @@ impl<'src> Emit<'src> {
                 let is_async = self.target.lookup_proc(name).unwrap().needs_async;
                 let args = self.emit_args(args, &self.arg_types(name));
                 if is_async {  // TODO: untested
+                    // return RustStmt::IoAction(format!("({CALL_ACTION_ONCE} this.{name}({args}).done() }})))"));
+                    // TODO: this isnt closed, you do that later? cant have the .done ever because of args
                     return RustStmt::IoAction(format!("this.{name}({args})"));
+
                 } else {
                     format!("nosuspend!(this.{name}(ctx, {args}));\n")
                 }
@@ -683,12 +686,16 @@ impl RustStmt {
 
         let mut this = RustStmt::Empty;
         mem::swap(&mut this, self);
+
+        // TODO: do better. really want to not be opaque until later
+        // let first = this.to_src().coerce_open();
+        // let second = other.to_src().coerce_open();
+        // let both = RustStmt::IoAction(format!("({CALL_ACTION_ONCE}{first}.then_once(Box::new(move |ctx: &mut Ctx<'_, '_>, this: &mut (dyn Any + 'static)| {{ let this: &mut Self = ctx.trusted_cast(this); {second}.done()  }} )) }})))"));
+        // *self = both;
         *self = RustStmt::Block(vec![this, other])  // I think a sequence is always better than append
         // change strategy depending if a box would need to allocate
     }
 
-    // TODO: !! check version that doesnt require clone. i call this so often.
-    //       OR result that returns the original if not?
     /// None if self contains any await points.
     fn to_sync(self) -> Option<String> {
         let sync_block = |stmts: Vec<RustStmt>|
@@ -751,10 +758,36 @@ impl RustStmt {
 
         match self {
             RustStmt::Sync(_) => unreachable!(),
-            RustStmt::Block(body) => {  // TODO: fold them into eachotehr when possible
-                let new_stmts = collapse_sync_runs(body);
-                let actions: Vec<_> = new_stmts.into_iter().map(|s| s.to_src().coerce_closed()).collect();
-                RsAct::Closed(format!("IoAction::Sequential(vec![{}])", actions.join(",\n")))
+            RustStmt::Block(body) => {
+                let new_stmts = collapse_sync_runs(body);  // TODO: make sure this is redundant and remove
+                let actions: Vec<_> = new_stmts.into_iter().map(|s| s.to_src()).collect();
+                match actions.len() {
+                    0 => RsAct::Empty,
+                    1 => RsAct::Closed(actions.into_iter().next().unwrap().coerce_closed()),
+                    count => {  // TODO: thhis sucks
+                        let mut src = format!("(IoAction::CallOnce(Box::new(move |ctx, this|{{ IoAction::None");
+                        for stmt in actions.into_iter().rev() {
+                            let action = match stmt {
+                                RsAct::Sync(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); nosuspend!({{ {s} }});\nIoAction::None"),
+                                RsAct::Open(s) |
+                                RsAct::Closed(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); \n{s}"),
+                                RsAct::Empty => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); \nIoAction::None"),
+                            };
+                            src += &action;
+
+
+                            // let action = stmt.coerce_closed_trailing(src);
+                            // src = format!(".then_once(Box::new(move |ctx: &mut Ctx<'_, '_>, this: &mut (dyn Any + 'static)|{{ {action}.done()  }} ))");
+                        }
+
+                        src += ".done()";
+                        for _ in 0..count {
+                            src += "})"
+                        }
+                        src += "})))";
+                        RsAct::Closed(src)
+                    }
+                }
             },
             RustStmt::IoAction(a) => RsAct::Closed(a),
             RustStmt::Loop { init, body, end_cond, inc_stmt, clone_args, after_loop } => {
@@ -764,11 +797,12 @@ impl RustStmt {
                     {CALL_ACTION}
                     {clone_args}
                     if {end_cond} {{
-                        LoopRes::Break({{ {after} }})
+                        let __next = {{ {after} }};
+                        LoopRes::Break(__next)
                     }} else {{
                         {inc_stmt}
-                        let _next = {{ {body_src} }};
-                        LoopRes::Continue(_next)
+                        let __next = {{ {body_src} }};
+                        LoopRes::Continue(__next)
                     }}
                 }}))"#, after=after_loop.to_src().coerce_open()))
             },
