@@ -1,8 +1,9 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use crate::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Sprite, Str, Trigger, World};
-use egui::{Button, CollapsingHeader, Context, Direction, Grid, Layout, Separator, Ui};
+use egui::{Button, CollapsingHeader, Color32, Context, Direction, Grid, Layout, Rgba, Separator, Ui};
 use egui::plot::{Legend, Line, Plot, PlotBounds, PlotPoints, Points};
+use macroquad::prelude::GREEN;
 use crate::backend::RenderHandle;
 
 #[derive(Default)]
@@ -10,6 +11,7 @@ pub struct Debugger<S: ScratchProgram<R>, R: RenderBackend<S>> {
     _p: PhantomData<(S, R)>,
     frame_time: VecDeque<f32>,
     actions: VecDeque<usize>,
+    none_actions: VecDeque<usize>,
     answer: String,
 }
 
@@ -21,6 +23,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
             _p: Default::default(),
             frame_time: vec![0.0; FRAME_COUNT as usize].into(),
             actions: vec![0; FRAME_COUNT as usize].into(),
+            none_actions: vec![0; FRAME_COUNT as usize].into(),
             answer: "".to_string(),
         }
     }
@@ -185,6 +188,8 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
 
         self.actions.pop_front();
         self.actions.push_back(world.futs_this_frame);
+        self.none_actions.pop_front();
+        self.none_actions.push_back(world.none_futs_this_frame);
 
         egui::Window::new("Perf")
             .hscroll(true).vscroll(true).default_open(false)
@@ -220,8 +225,14 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                                     .map(|(i, v)| {
                                         [i as f64, *v as f64]
                                     }).collect();
+                                let points2: PlotPoints = self.none_actions
+                                    .iter().enumerate()
+                                    .map(|(i, v)| {
+                                        [i as f64, *v as f64]
+                                    }).collect();
 
-                                plot.line(Line::new(points));
+                                plot.line(Line::new(points).color(Color32::GREEN));
+                                plot.line(Line::new(points2).color(Color32::RED));
                             });
                     });
 

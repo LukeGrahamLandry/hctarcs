@@ -6,14 +6,11 @@ impl {name} {{
 {procs}
 }}
 impl Sprite<Stage, Backend> for {name} {{
-    fn receive_async(&self, msg: Trigger<Msg>) -> Box<FnFut<Stage, Backend>> {{
-        Box::new(move |ctx, this| {{
-            let this: &mut Self = ctx.trusted_cast(this);
-            match msg {{
-                {async_handlers}
-                _ => IoAction::None.done(),  // Ignored. Nothing cares about this event
-            }}
-        }})
+    fn receive_async(&self, msg: Trigger<Msg>) -> IoAction<Stage, Backend> {{
+        match msg {{
+            {async_handlers}
+            _ => IoAction::None,  // Ignored. Nothing cares about this event
+        }}
     }}
 
     // Grumble grumble object safety...

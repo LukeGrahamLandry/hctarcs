@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::mem;
-use std::num::NonZeroU16;
 use crate::ast::{BinOp, Expr, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
@@ -81,6 +80,13 @@ fn format_trigger(project: &Project, value: &Trigger) -> String {
     }
 }
 
+fn debug_trigger(project: &Project, value: &Trigger) -> String {
+    match value {
+        Trigger::FlagClicked => "Event: Flag Clicked".to_string(),
+        Trigger::Message(v) => format!("Event: {}", &project.var_names[v.0].escape_default()),
+    }
+}
+
 struct Emit<'src> {
     project: &'src Project,
     target: &'src Sprite,
@@ -137,13 +143,13 @@ impl<'src> Emit<'src> {
         for (trigger, scripts) in &self.triggers {
             let script_ioactions: Vec<_> = scripts
                 .iter()
-                .map(|script| script.clone().to_src().coerce_closed())
+                .map(|script| format!("{{ {} }}", FutMachine::from(script.clone()).to_src(&debug_trigger(self.project, trigger))))
                 .collect();
 
             let action = if scripts.len() == 1 {
-                format!("{}.done()", script_ioactions[0])
+                format!("{}", script_ioactions[0])
             } else {
-                format!("IoAction::Concurrent(vec![{}]).done()", script_ioactions.join(","))
+                format!("IoAction::Concurrent(vec![{}])", script_ioactions.join(","))
             };
 
             async_handlers.push_str(&format!(
@@ -182,21 +188,12 @@ impl<'src> Emit<'src> {
         match body.clone().to_sync() {
             None => {
                 assert!(t.needs_async, "expected async fn {} \n{:?}", t.name, body);
-                // TODO: list of reserved variable names.
-        //         format!(r#"
-        //             fn {name}(&self{args}) -> IoAction<Stage, Backend> {{
-        //                 IoAction::UserFnBody(Box::new(move |ctx, this| {{
-        //                     let this: &mut Self = ctx.trusted_cast(this);
-        //                     let __inner: IoAction<Stage, Backend> = {{ {src} }};
-        //                     __inner.done()
-        //                 }}), "{name}")
-        //             }}
-        // "#, name=t.name, src=body.to_src().coerce_open())
+                // TODO: list of reserved variable names that cant be used for args
                 format!(r#"
                     fn {name}(&self{args}) -> IoAction<Stage, Backend> {{
                         {src}
                     }}
-        "#, name=t.name, src=FutMachine::from(body).to_src(&t.name))
+        "#, name=t.name, src=FutMachine::from(body).to_src(&format!("Call: {}", t.name)))
 
 
             },
@@ -242,7 +239,6 @@ impl<'src> Emit<'src> {
                     body: Box::new(self.emit_block(body)),
                     end_cond: self.emit_expr(cond, Some(SType::Bool)),
                     inc_stmt: "".to_string(),
-                    clone_args: self.clone_captured_args(),
                     after_loop: Box::new(RustStmt::Empty),
                 };
             }
@@ -257,7 +253,6 @@ impl<'src> Emit<'src> {
                     body: Box::new(self.emit_block(body)),
                     end_cond: rval(SType::Bool, format!("(i{0} >= end{0})", id)),
                     inc_stmt: format!("i{0} += 1;", id),
-                    clone_args: self.clone_captured_args(),
                     after_loop: Box::new(RustStmt::Empty),
                 };
             }
@@ -275,7 +270,6 @@ impl<'src> Emit<'src> {
                     body: Box::new(self.emit_block(body)),
                     end_cond: rval(SType::Bool, format!("(i{0} >= end{0})", id)),
                     inc_stmt: format!("{1} = {iter_expr}; i{0} += 1;", id, v),
-                    clone_args: self.clone_captured_args(),
                     after_loop: Box::new(RustStmt::Empty),
                 };
             }
@@ -322,27 +316,6 @@ impl<'src> Emit<'src> {
             }
             _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
         })
-    }
-
-    // Ugly solution to async loops being FnMut
-    fn clone_captured_args(&self) -> String {
-        match self.current {
-            None => String::new(),  // Scripts don't have arguments.
-            Some(proc) => {
-                if !self.current_is_async {
-                    return "unreachable!(\"sync proc so no loop clone args for capture\")".to_string();
-                }
-                proc.args.iter().map(|v| {
-                    let ty = self.project.expected_types[v.0].unwrap_or(SType::Poly);
-                    let name = &self.project.var_names[v.0];
-                    match ty {
-                        SType::Number | SType::Bool => format!(""),
-                        SType::Str | SType::Poly => format!("let {name} = {name}.clone();\n"),
-                        SType::ListPoly => unreachable!()
-                    }
-                }).collect()
-            }
-        }
     }
 
     fn arg_types(&self, proc_name: &str) -> Vec<Option<SType>> {
@@ -529,9 +502,6 @@ impl<'src> Emit<'src> {
 
 }
 
-const CALL_ACTION: &str = "IoAction::Loop(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this);\n";
-const CALL_ACTION_ONCE: &str = "IoAction::CallOnce(Box::new(move |ctx, this| { let this: &mut Self = ctx.trusted_cast(this);\n";
-
 // TODO: this could also track borrow vs owned
 #[derive(Clone, Debug)]
 struct RustValue {
@@ -551,9 +521,6 @@ enum RustStmt {
         body: Box<RustStmt>,
         end_cond: RustValue,
         inc_stmt: String,
-        /// You can't move out of an FnMut closure (which is needed because the loop will be called multiple times)
-        /// This is not used if the loop is emitted as sync code.
-        clone_args: String,
         after_loop: Box<RustStmt>
     },
     If {
@@ -651,9 +618,11 @@ impl RustStmt {
                         return;
                     }
                     RustStmt::IoAction(action) => {
-                        // TODO: dont be opaque. leave the .done slot and use it as a .then if the closure wouldn't need to allocate.
-                        // *self = RustStmt::IoAction(format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\n({action}).done() }})))"));
-                        // return;
+                        *s += action;
+                        let mut src = String::new();
+                        mem::swap(s, &mut src);
+                        *self = RustStmt::IoAction(src);
+                        return;
                     }
                     _ => {}
                 }
@@ -765,82 +734,6 @@ impl RustStmt {
         }
     }
 
-    fn to_src(self) -> RsAct {
-        if matches!(self, RustStmt::Empty) {
-            return RsAct::Empty;
-        }
-        if self.is_sync() {
-            return RsAct::Sync(self.to_sync().unwrap());
-        }
-
-        match self {
-            RustStmt::Sync(_) => unreachable!(),
-            RustStmt::Block(body) => {
-                let new_stmts = collapse_sync_runs(body);  // TODO: make sure this is redundant and remove
-                let actions: Vec<_> = new_stmts.into_iter().map(|s| s.to_src()).collect();
-                match actions.len() {
-                    0 => RsAct::Empty,
-                    // 1 => RsAct::Closed(actions.into_iter().next().unwrap().coerce_closed()),
-                    count => {  // TODO: thhis sucks
-                        let mut src = format!("(IoAction::CallOnce(Box::new(move |ctx, this|{{ IoAction::None");
-                        for stmt in actions.into_iter() {
-                            let action = match stmt {
-                                RsAct::Sync(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); {{ {s} }};\nIoAction::None"),
-                                RsAct::Open(s) |
-                                RsAct::Closed(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); \n{s}"),
-                                RsAct::Empty => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); \nIoAction::None"),
-                            };
-                            src += &action;
-
-
-                            // let action = stmt.coerce_closed_trailing(src);
-                            // src = format!(".then_once(Box::new(move |ctx: &mut Ctx<'_, '_>, this: &mut (dyn Any + 'static)|{{ {action}.done()  }} ))");
-                        }
-
-                        src += ".done()";
-                        for _ in 0..count {
-                            src += "})"
-                        }
-                        src += "})))";
-                        RsAct::Closed(src)
-                    }
-                }
-            },
-            RustStmt::IoAction(a) => RsAct::Closed(a),
-            RustStmt::Loop { var_decls, init, body, end_cond, inc_stmt, clone_args, after_loop } => {
-                let body_src = body.to_src().coerce_open();
-                RsAct::Open(format!(r#"
-                    {var_decls}
-                    {init}
-                    {CALL_ACTION}
-                    {clone_args}
-                    if {end_cond} {{
-                        let __next = {{ {after} }};
-                        LoopRes::Break(__next)
-                    }} else {{
-                        {inc_stmt}
-                        let __next = {{ {body_src} }};
-                        LoopRes::Continue(__next)
-                    }}
-                }}))"#, after=after_loop.to_src().coerce_open()))
-            },
-            RustStmt::If { cond, if_true, if_false } => {
-                let t = if_true.to_src().coerce_open();
-                let f = if_false.map(|a| a.to_src().coerce_open()).unwrap_or_else(|| String::from("IoAction::None"));
-                let src = format!(r#"(if {cond} {{ {t} }} else {{ {f} }})"#);
-                RsAct::Open(src)
-            }
-            RustStmt::Empty => unreachable!()
-        }
-    }
-
-    fn to_block(self) -> Vec<RustStmt> {
-        match self {
-            RustStmt::Empty => vec![],
-            RustStmt::Block(stmts) => stmts,
-            stmt => vec![stmt]
-        }
-    }
 }
 
 #[derive(Clone, Default, Debug)]
@@ -993,6 +886,7 @@ impl FutMachine {
             branches += &format!("{0} => {{ {1} }},\n", i+1, body);
         }
 
+        // Note: header is outside the closure so it only runs once.
         format!(r#"{header}
         IoAction::FutMachine(Box::new(move |ctx, this, s| {{
             let this: &mut Self = ctx.trusted_cast(this);
@@ -1011,52 +905,6 @@ impl From<RustStmt> for FutMachine {
         let mut s = FutMachine::default();
         s.push(value);
         s
-    }
-}
-
-// TODO: remove the old version of this
-fn collapse_sync_runs(body: Vec<RustStmt>) -> Vec<RustStmt> {
-    let mut new_stmt = RustStmt::Empty;
-    for stmt in body {
-        new_stmt.push(stmt);
-    }
-    match new_stmt {
-        RustStmt::Block(contents) => contents,
-        _ => vec![new_stmt],
-    }
-}
-
-enum RsAct {
-    /// A block that returns nothing.
-    Sync(String),
-    /// A block that returns an IoAction. There may be sync code at the front that has side effects before producing the action.
-    Open(String),
-    /// An expression that returns an IoAction. Evaluating the expression has no side effects.
-    Closed(String),
-    /// Do nothing.
-    Empty
-}
-
-impl RsAct {
-    fn coerce_open(self) -> String {
-        match self {
-            RsAct::Sync(s) => format!("{{ {s} }};\nIoAction::None"),
-            RsAct::Open(s) => s,
-            RsAct::Closed(s) => s,
-            RsAct::Empty => String::from("IoAction::None")
-        }
-    }
-
-    /// Useful for function bodies where you want a list of futures but not early eval those later in the list.
-    fn coerce_closed(self) -> String {
-        match self {
-            RsAct::Sync(s) => {
-                format!("({CALL_ACTION_ONCE}{{ {s} }};\nIoAction::None.done() }})))")
-            }
-            RsAct::Open(s) => format!("({CALL_ACTION_ONCE}{s}.done() }})))"),
-            RsAct::Closed(s) => s,
-            RsAct::Empty => String::from("IoAction::None")
-        }
     }
 }
 

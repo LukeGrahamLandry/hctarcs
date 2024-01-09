@@ -2,8 +2,6 @@
 
 use std::collections::{VecDeque};
 use std::fmt::Debug;
-use std::mem::size_of;
-use std::num::NonZeroU16;
 use std::ops::Add;
 use std::time::{Duration};
 
@@ -54,7 +52,8 @@ pub struct World<S: ScratchProgram<R>, R: RenderBackend<S>> {
     last_answer: Option<String>,
     pub mode: RunMode,
     events: VecDeque<SEvent>,
-    pub futs_this_frame: usize, // Inspect Only. TODO: graph
+    pub futs_this_frame: usize, // Inspect Only. 
+    pub none_futs_this_frame: usize, // Inspect Only. 
 
 }
 
@@ -78,6 +77,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             mode: RunMode::Turbo,  // TODO: pass default on cli for when not inspect
             events: Default::default(),
             futs_this_frame: 0,
+            none_futs_this_frame: 0,
         }
     }
 
@@ -101,7 +101,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         for (owner, c) in self.custom.iter().enumerate() {
             let action = c.receive_async(msg);
             self.scripts.push(Script {
-                next: vec![IoAction::CallOnce(action)],
+                next: vec![action],
                 owner,
                 trigger: msg,
             });
@@ -120,6 +120,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
 
     pub fn run_frame(&mut self, render: &mut R::Handle<'_>) {
         self.futs_this_frame = 0;
+        self.none_futs_this_frame = 0;
         for e in self.events.drain(0..) {
             match e {
                 SEvent::UiClearPen => render.pen_clear(),
@@ -194,9 +195,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                 };
 
                 #[cfg(feature = "inspect")]
-                {
-                    self.futs_this_frame += 1;
-                }
+                { self.futs_this_frame += 1; }
 
                 let current = c.next.pop();
                 // println!("{current:?}");
@@ -206,52 +205,13 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                         return /*from closure*/ false
                     },
                     Some(action) => match action {  // Poll the future.
-                        IoAction::Loop(mut f) => {  // Call some other async function.
-                            // Its a stack, so push the next loop iteration and then push the body that must resolve before calling it.
-                            match f(ctx, custom) {
-                                LoopRes::Continue(callback) => {
-                                    c.next.push(IoAction::Loop(f));
-                                    c.next.push(callback);
-                                }
-                                LoopRes::Break(callback) => {
-                                    c.next.push(callback);
-                                }
-                            }
-
-                            made_progress = true;
-                            break
-                        },
-                        IoAction::CallOnce(f) => {  // TODO: copy-n-paste
-                            let (action, next) = f(ctx, custom);
-
-                            // Its a stack, so push the next handler and then push the action that must resolve before calling it.
-                            match next {
-                                Callback::ThenOnce(callback) => c.next.push(IoAction::CallOnce(callback)),
-                                Callback::Again => unreachable!("Tried to use IoAction::CallOnce for loop body."),
-                                Callback::Done => {}
-                            }
-                            c.next.push(action);
-                            made_progress = true;
-                            break
-                        }
-                        IoAction::UserFnBody(f, name) => {
-                            c.next.push(IoAction::CallMarker(name));
-                            let (action, next) = f(ctx, custom);
-                            assert!(matches!(next, Callback::Done));
-                            c.next.push(action);
-                            made_progress = true;
-                            break
-                        }
-                        IoAction::CallMarker(_) => {
-                            continue
-                        }
                         IoAction::StopCurrentScript => {
                             made_progress = true;
                             loop {
                                 match c.next.pop() {
                                     None => return false,
                                     Some(a) => {
-                                        if matches!(a, IoAction::CallMarker(_) | IoAction::FutMachine(_, _, _)) {
+                                        if matches!(a, IoAction::FutMachine(_, _, _)) {
                                             break
                                         } else {
                                             // Continue
@@ -270,12 +230,8 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                         // TODO: ideally the compiler wouldn't ever emit these since they dont do anything.
                         IoAction::None => {
                             made_progress = true;
-                            continue
-                        }
-                        // TODO: could the compiler do these without allocating the vec since im just appending to one I already have anyway? maybe have a method on the Ctx to push actions?
-                        IoAction::Sequential(actions) => {
-                            c.next.extend(actions.into_iter().rev());  // Reverse for because c.next is a stack
-                            made_progress = true;
+                            #[cfg(feature = "inspect")]
+                            { self.none_futs_this_frame += 1; }
                             continue
                         }
                         IoAction::SleepSecs(seconds) => {
@@ -334,7 +290,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             for (owner, c) in self.custom.iter().enumerate() {
                                 let action = c.receive_async(Trigger::Message(msg));
                                 s.push(Script {
-                                    next: vec![IoAction::CallOnce(action)],
+                                    next: vec![action],
                                     owner,
                                     trigger: Trigger::Message(msg),
                                 });
