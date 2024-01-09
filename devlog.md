@@ -1,8 +1,50 @@
 
+## TODO: collapsing futures 
+
+Before i start messing with things clarify the problem statement. 
+The way I got it working involved insane double wrapping of everything to be able to pass it to the event loop without running side effects too early. 
+Importantly, the observation that while expressions can't create side effects, they can observe them. 
+Unfortunatly this sucks. 
+- The generated code is completely unintelligible so its really hard to debug. 
+- Every block is a new boxed closure. I thought that wasn't too bad since you only allocate if you capture something but since I chain them, if someone at the bottom needs to use a function argument, everyone above needs to allocate.  
+
+The new way to think about it is a user function call returns an iterator that yields io actions. 
+But like a rust iterator where it doesnt need to build up the full list first. 
+My previous attempt returning a vec of io actions means each sync part needed its own boxed closure to return the code without running yet. 
+But now the runtime just calls back into it repeatedly. 
+Then need to decide if you make every block its own one of those so like body of loop needs an allocation. 
+OR you could have it return the next state to call it with instead of having the runtime implicitly increment the number 
+and inline all blocks into the function body switch statement. 
+The latter is fewer closures, just reuse the one in the function. I'm already doing most of the work returning break or continue.  
+In fact, its extra the same because current loop break returns the whole action after the loop because of how I need to move arguments to inner closures. 
+So instead of the current insane nesting, it would be more like a traditional compilation target where everything is a flat chunk of code split into basic 
+blocks that jump to each other. And since you'd never do closures, dont have to deal with cloning the captured args out of the fnmut. 
+If I do that, it means one allocation per function call instead of one per block. 
+
+Interesting that im slowly approaching how (i think) rust actually implements async functions. 
+
+I think the only thing you lose in this whole adventure is 
+slightly less of the upcoming futures are visible on the debugger stack, 
+but really I had to do enough nesting to fix data dependencies 
+that you didn't really have it before either. 
+
+NOTE: I could try to use rust generators but I think i'll have the same problem as with async where you can't have it relinquish references on yield. 
+
+## TODO: porting tests
+
+It's such a pain to use the gui so need to add everything im using to scratch-compiler. 
+Also integration for calling it. 
+Also build script for website demos. 
+
+TODO: why are my egui events super sluggish in wasm build? must be something wrong with egui-macroquad cause the egui demo is fine. 
+
+## fixing tres (Jan 7)
+
+> All my baubles for a pure function 
 
 Noticed making it think stop this script is async makes linrays really slow and added a graph of how many futures handled each frame. 
 Turns out its 700k... oops. So yeah need to work on that. 
-Should allow in between functions that don't need to do any io actions but call a function that does 
+TODO: Should allow in between functions that don't need to do any io actions but call a function that does 
 at the end to not be themselves wrapped in a future. 
 
 progress on tres debugging: 
@@ -34,6 +76,8 @@ lol i was still reversing actions list.
 so im back to the same fucking problem now where they dont chain right
 
 TODO: my great nosuspend!() for extra check breaks the formatter. 
+
+TODO: now AskAndWait only works in inspect mode because it uses egui 
 
 ## async tres (Jan 6)
 

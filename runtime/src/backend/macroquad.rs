@@ -93,7 +93,10 @@ impl<S: ScratchProgram<BackendImpl<S>>> BackendImpl<S> {
             }
 
             #[cfg(feature = "inspect")]
-            debugger.frame(&mut world);
+            {
+                egui_macroquad::ui(|ctx| debugger.frame(ctx, &mut world));
+                egui_macroquad::draw();
+            }
 
             next_frame().await;
         }

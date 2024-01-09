@@ -816,6 +816,7 @@ impl RustStmt {
 }
 
 
+
 // TODO: remove the old version of this
 fn collapse_sync_runs(body: Vec<RustStmt>) -> Vec<RustStmt> {
     let mut new_stmt = RustStmt::Empty;

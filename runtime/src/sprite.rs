@@ -52,6 +52,7 @@ pub enum Trigger<Msg> {
 pub trait Sprite<S: ScratchProgram<R>, R: RenderBackend<S>>: Debug + Any {
     // TODO: this is not an async function; it returns an async function. that's a strange choice
     //       But that makes it easier to call because you dont need a Ctx so the world doesn't need to store messages to the next frame.
+    // TODO: this is going to return FutMachine
     fn receive_async(&self, _msg: Trigger<S::Msg>) -> Box<FnFut<S, R>>;
 
     // You can't just say Sprite extends Clone because that returns Self so its not object safe.

@@ -1,5 +1,3 @@
-use macroquad::color::BLACK;
-use macroquad::prelude::{draw_text, measure_text};
 use notan::draw::*;
 use notan::prelude::*;
 use crate::backend::RenderBackend;

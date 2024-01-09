@@ -3,6 +3,7 @@
 use std::collections::{VecDeque};
 use std::fmt::Debug;
 use std::mem::size_of;
+use std::num::NonZeroU16;
 use std::ops::Add;
 use std::time::{Duration};
 
@@ -102,6 +103,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
             self.scripts.push(Script {
                 next: vec![IoAction::CallOnce(action)],
                 owner,
+                trigger: msg,
             });
         }
     }
@@ -126,7 +128,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
 
         match self.mode {
             RunMode::Turbo => self.poll_turbo(render),
-            RunMode::Compat => {
+            RunMode::Throttle => {
                 self.poll(render);
             }
             RunMode::Manual(req) => {
@@ -249,7 +251,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                                 match c.next.pop() {
                                     None => return false,
                                     Some(a) => {
-                                        if let IoAction::CallMarker(_) = a {
+                                        if matches!(a, IoAction::CallMarker(_) | IoAction::FutMachine(_, _, _)) {
                                             break
                                         } else {
                                             // Continue
@@ -278,15 +280,17 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                         }
                         IoAction::SleepSecs(seconds) => {
                             if seconds > 0.0 {
-                                // Note: not from_seconds because dont want to round down to zero
-                                let replace = IoAction::WaitUntil(Instant::now().add(Duration::from_millis((seconds * 1000.0)as u64)));
-                                made_progress = true;
+                                // TODO: what's scratch's timer resolution? Is there some value that should just decay to a yield?
+                                // Note: not from_seconds because dont want to round down to zero.
+                                let replace = IoAction::WaitUntil(Instant::now().add(Duration::from_millis((seconds * 1000.0) as u64)));
+                                // made_progress = true;  We know we're about to be blocked.
                                 c.next.push(replace);
                                 break
                             } else {  // TODO: does scratch yield for sleep(0)?
                                 continue
                             }
                         }
+                        // TODO: this doesnt work on web
                         IoAction::WaitUntil(time) => {
                             let now = Instant::now();
                             if now <= time {  // Still waiting, no progress
@@ -332,6 +336,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                                 s.push(Script {
                                     next: vec![IoAction::CallOnce(action)],
                                     owner,
+                                    trigger: Trigger::Message(msg),
                                 });
                             }
                             c.next.push(IoAction::ConcurrentScripts(s));
@@ -358,6 +363,16 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                             made_progress = true;
                             break
                         }
+                        IoAction::FutMachine(mut f, name, state) => {
+                            // TODO: this doesnt push a CallMarker since that's redundant now. Instead, make StopCurrentScript just pop to a FutMachine. (done but not tested)
+                            let (action, state) = f(ctx, custom, state);
+                            if let Some(state) = state {  // c.next is a stack, so push continuation first
+                                c.next.push(IoAction::FutMachine(f, name, state));
+                            }  // else, that function is finished.
+                            c.next.push(action);
+                            made_progress = true;
+                            break
+                        }
                     }
                 }
 
@@ -365,7 +380,6 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                 { unreachable!("end of loop. use explicit continue cause im afraid of forgetting") }
             }
 
-            // println!("Yield");
             return /*from closure*/  true
         });
 
@@ -381,7 +395,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum RunMode {
     Turbo,
-    Compat,
+    Throttle,
     Manual(bool),
 }
 

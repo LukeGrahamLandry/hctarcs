@@ -9,7 +9,7 @@ render-softbuffer = ["dep:softbuffer", "dep:winit"]
 render-notan = ["dep:notan", "dep:image"]
 render-macroquad = ["dep:macroquad", "dep:image", "dep:egui-macroquad"]
 fetch-assets = ["dep:ureq"]
-inspect = ["dep:egui"]    # TODO: compiler flag to pass this to the run cmd and remove from defaults. build two wasm builds of each?
+inspect = ["dep:egui", "notan?/egui"]
 
 [dependencies]
 rand = "0.8.5"

@@ -3,8 +3,8 @@
 > Compiling scratch projects to native executables just seems backwards! 
 
 - [Try it online!](https://lukegrahamlandry.ca/hctarcs/)
-- Implemented: Arithmetic & Logic, Global and Sprite Variables, Custom Blocks, Movement (goto), Pen (Single Pixels and Stamp), Lists, Set Costume 
-- Missing: (Most) Looks, Sound, Broadcasts, Wait, Rotation, Glide, Bounce, Cloning, User Input (keyboard & mouse), Loop Yielding 
+- Implemented: Arithmetic & Logic, Global and Sprite Variables, Custom Blocks, Movement (goto), Pen (Single Pixels and Stamp), Lists, Set Costume, Broadcasts, Wait 
+- Missing: (Most) Looks, Sound, Rotation, Glide, Bounce, Cloning, User Input (keyboard & mouse)
 
 BEWARE: There's no sandbox-ing. Only run projects on your computer if you understand what they're doing. 
 *If you can think of a way to get arbitrary code execution with this, please let me know!*
