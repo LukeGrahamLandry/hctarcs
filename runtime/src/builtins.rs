@@ -5,10 +5,11 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::{StdRng, ThreadRng};
 use std::cell::RefCell;
 use std::io::{stdout, Write};
-use std::time::{SystemTime};
+use std::ops::Add;
+use std::time::{Duration, SystemTime};
 use crate::backend::RenderBackend;
 use crate::poly::Str;
-use crate::{RenderHandle, ScratchProgram, Sprite};
+use crate::{Poly, RenderHandle, ScratchProgram, Sprite};
 use crate::sprite::{Line, SpriteBase};
 
 pub const HALF_SCREEN_WIDTH: f64 = 240.0;
@@ -168,6 +169,17 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
             }
         }
     }
+
+    // TODO: this is not using the right epoch
+    pub fn sensing_dayssince2000(&self) -> f64 {
+        const MS_PER_DAY: u128 = 31536000;
+        const SECS_OFFSET: u64 = 0;  // TODO
+
+        let epoch = SystemTime::UNIX_EPOCH.add(Duration::from_secs(SECS_OFFSET));
+        let since = SystemTime::now().duration_since(epoch).unwrap();
+        (MS_PER_DAY * since.as_millis()) as f64 / 1000.0
+    }
+
 }
 
 thread_local! {

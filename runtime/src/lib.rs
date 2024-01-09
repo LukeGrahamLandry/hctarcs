@@ -124,6 +124,15 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
         for e in self.events.drain(0..) {
             match e {
                 SEvent::UiClearPen => render.pen_clear(),
+                SEvent::Click(owner) => {
+                    let trigger = Trigger::SpriteClicked;
+                    let action = self.custom[owner].receive_async(trigger);
+                    self.scripts.push(Script {
+                        next: vec![action],
+                        owner,
+                        trigger,
+                    });
+                }
             }
         }
 
@@ -407,5 +416,6 @@ pub fn args() -> impl Iterator<Item=String> {
 }
 
 enum SEvent {
-    UiClearPen
+    UiClearPen,
+    Click(usize)
 }

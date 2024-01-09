@@ -33,7 +33,11 @@ impl From<ScratchProject> for Project {
         let globals = get_vars(&mut proj, stage);
 
         for target in &value.targets {
-            let fields = get_vars(&mut proj, target);
+            let fields = if target.isStage {  // TODO: ehhhh idk about this
+                globals.clone()
+            } else {
+                get_vars(&mut proj, target)
+            };
             let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new(), procedures: HashMap::new(), needs_async: false }.parse();
             proj.targets.push(result);
         }
@@ -43,6 +47,7 @@ impl From<ScratchProject> for Project {
     }
 }
 
+// TODO: handle default values
 fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
     let mut expand = | (_, v): (&String, &Operand)| {
         let name = v.unwrap_var();
@@ -50,6 +55,7 @@ fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
     };
     let mut a: HashMap<String, VarId> = target.variables.iter().map(&mut expand).collect();
     a.extend(target.lists.iter().map(&mut expand));
+    println!("vars: {a:?}");
     a
 }
 
@@ -143,6 +149,14 @@ impl<'src> Parser<'src> {
         }
     }
 
+
+    fn parse_body_or_empty(&mut self, arg: &'src Option<Operand>) -> Vec<Stmt> {
+        match arg {
+            None => vec![],
+            Some(arg) => self.parse_body(arg.opt_block()),
+        }
+    }
+
     fn parse_body(&mut self, mut next: Option<&'src str>) -> Vec<Stmt> {
         let mut body = vec![];
         while next.is_some() {
@@ -161,17 +175,29 @@ impl<'src> Parser<'src> {
 
     fn parse_stmt(&mut self, block: &'src Block) -> Stmt {
         match block.opcode.as_str() {
-            "control_if_else" => unwrap_input!(block, Input::Branch2 { CONDITION, SUBSTACK, SUBSTACK2 } => {
-                Stmt::IfElse(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()), self.parse_body(SUBSTACK2.opt_block()))
+            "control_if_else" => unwrap_input!(block, Input::Branch { CONDITION, SUBSTACK, SUBSTACK2 } => {
+                Stmt::IfElse(self.parse_t(CONDITION, SType::Bool), self.parse_body_or_empty(SUBSTACK), self.parse_body_or_empty(SUBSTACK2))
             }),
-            "control_if" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
-                Stmt::If(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()))
+            "control_if" => unwrap_input!(block, Input::Branch { CONDITION, SUBSTACK, SUBSTACK2 } => {
+                assert!(SUBSTACK2.is_none());
+                Stmt::If(self.parse_t(CONDITION, SType::Bool), self.parse_body_or_empty(SUBSTACK))
             }),
-            "control_repeat_until" => unwrap_input!(block, Input::Branch1 { CONDITION, SUBSTACK } => {
-                Stmt::RepeatUntil(self.parse_t(CONDITION, SType::Bool), self.parse_body(SUBSTACK.opt_block()))
+            "control_repeat_until" => unwrap_input!(block, Input::Branch { CONDITION, SUBSTACK, SUBSTACK2 } => {
+                assert!(SUBSTACK2.is_none());
+                Stmt::RepeatUntil(self.parse_t(CONDITION, SType::Bool), self.parse_body_or_empty(SUBSTACK))
+            }),
+            "control_while" => unwrap_input!(block, Input::Branch { CONDITION, SUBSTACK, SUBSTACK2 } => {
+                // Secret block that turbowarp knows about?
+                // TODO: make sure its just flip of until
+                assert!(SUBSTACK2.is_none());
+                Stmt::RepeatUntil(Expr::Un(UnOp::Not, Box::new(self.parse_t(CONDITION, SType::Bool))), self.parse_body_or_empty(SUBSTACK))
             }),
             "control_repeat" => unwrap_input!(block, Input::ForLoop { TIMES, SUBSTACK } => {
                 Stmt::RepeatTimes(self.parse_t(TIMES, SType::Number), self.parse_body(SUBSTACK.opt_block()))
+            }),
+            "control_forever" => unwrap_input!(block, Input::Forever { SUBSTACK } => {
+                let const_false = Expr::Bin(BinOp::EQ, Box::new(Expr::Literal(String::from("0"))), Box::new(Expr::Literal(String::from("1"))));
+                Stmt::RepeatUntil(const_false, self.parse_body(SUBSTACK.opt_block()))
             }),
             "control_stop" => {
                 match block.fields.as_ref().unwrap().unwrap_stop() {
@@ -195,6 +221,7 @@ impl<'src> Parser<'src> {
                     Scope::Argument => unreachable!(),
                 }
             }),
+            "data_hidelist" => Stmt::Empty, // TODO
             "data_changevariableby" => unwrap_field!(block, Field::Var { VARIABLE } => {  // TODO: this could have a new ast node and use prettier +=
                 let value = self.parse_op_expr(block.inputs.as_ref().unwrap().unwrap_one());
                 self.expect_type(&value, SType::Number);
@@ -327,7 +354,7 @@ impl<'src> Parser<'src> {
             Some(&v) => (v, Scope::Instance),
             None => {
                 let v = *self.globals.get(name.unwrap_var()).unwrap();
-                (v, Scope::Instance)
+                (v, Scope::Global)
             }
         }
     }
@@ -486,6 +513,7 @@ impl<'src> Parser<'src> {
                 // TODO: there should be an SType::Costume so the id lookup can be constant folded
                 Expr::Literal(COSTUME.unwrap_var().to_string())
             }),
+            "sensing_dayssince2000" => Expr::BuiltinRuntimeGet(format!("sensing_dayssince2000")),
             _ => Expr::BuiltinRuntimeGet(block.opcode.clone())  // TODO: should be checked
         }
     }
@@ -516,6 +544,7 @@ impl<'src> Parser<'src> {
                 };
                 Trigger::Message(v)
             }),
+            "event_whenthisspriteclicked" => Trigger::SpriteClicked,
             _ => todo!("Unknown trigger {}", block.opcode)
         }
     }
@@ -571,7 +600,7 @@ fn bin_op(opcode: &str) -> Option<BinOp> {
 pub fn safe_str(name: &str) -> String {
     // TODO: be more rigorous than just hard coding the ones ive seen
     // TODO: BROKEN! if the special char was only difference we loose. need to mangle
-    name.replace(&['-', ' ', '.', '^', '*', '@', '=', '!', '>', '+', '-', '<', '/'], "_")
+    name.replace(&['-', ' ', '.', '^', '*', '@', '=', '!', '>', '+', '-', '<', '/', '?'], "_")
 }
 
 impl Project {
@@ -589,7 +618,7 @@ impl Project {
             }
             Some(prev) => if !types_match(prev, &t) {
                 // TODO: what happens if someone else already inferred their type based on our old incorrect guess? maybe it just works out.
-                //println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0]);
+                println!("WARNING: type mismatch: was {:?} but now {:?} for var {}", prev, &t, self.var_names[v.0]);
                 self.expected_types[v.0] = Some(SType::Poly);
             }
         }
@@ -631,10 +660,13 @@ pub fn infer_type(project: &Project, e: &Expr) -> Option<SType> {
         Expr::BuiltinRuntimeGet(s) => {
             match s.as_ref() {
                 "sensing_answer" => Some(SType::Str),
-                "motion_xposition" | "motion_yposition" => Some(SType::Number),
+                "motion_xposition" | "motion_yposition" | "sensing_dayssince2000" => Some(SType::Number),
+
                 _ => None,
             }
         }
+        Expr::ListGet(_, _, _) => Some(SType::Poly),
+        Expr::ListLen(_, _) => Some(SType::Number),
         _ => None
     }
 }
@@ -716,6 +748,15 @@ pub(crate) fn expect_type(project: &mut Project, e: &Expr, t: SType) {
                     Err(_) => assert_eq!(t, SType::Str),
                 }
             }
+        }
+        Expr::ListGet(_, v, i) => {
+            assert!(!matches!(t, SType::ListPoly));
+            project.expect_type(*v, SType::ListPoly);
+            expect_type(project, i, SType::Number);
+        }
+        Expr::ListLen(_, v) => {
+            assert!(matches!(t, SType::Number | SType::Poly));
+            project.expect_type(*v, SType::ListPoly);
         }
         _ => {}
     }

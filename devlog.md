@@ -18,7 +18,7 @@ TODO: why are my egui events super sluggish in wasm build? must be something wro
 - mouse down, mouse x, mouse y, key down 
 - touching
 
-## How fast
+## Quicksort (Jan 9)
 
 Added tracking of which closures are zero sized. 
 Doesn't actually change anything, I just want to see because 
@@ -31,6 +31,25 @@ The miscompiled linrays where it thinks fn return is async:
 (both edited to add `Stmt::StopScript => self.mark_async()`, without that its like 220ms)
 
 And it's still dramatically inefficient. 
+
+
+I want to get turbowarp's quick sort benchmark working. 
+Only change to it, I made was converting the sprites to bitmap because i don't want to deal with svgs yet. 
+
+Found a bunch of bugs just by compiling a new project. 
+- found that I allow empty else branch but not empty if, fixed in parser. TODO: more consistent handling in codegen (just treat if as empty else)
+- wasnt properly setting scope when accessing globals
+- `?` in safe_str
+- throught im not inferring for list types but am in parse. not infering for globals in general? 
+i was emiting var ids for globals seperately but then parsing it as a normal sprite and re-emitting new ids and some thing were finding the old ones and some the new so the inference didnt work
+- repeat was using opt_var instead of opt_block
+
+Added Features
+- need to parse default list values.
+- TODO: emit defaults
+- sensing_dayssince2000. TODO: use right epoch instead of unix one
+- temp ui button for sending click event to sprite. TODO: real bounding box
+- TODO: default costume size for tres (i removed my hack)
 
 ## Collapsing Futures (Jan 9)
 

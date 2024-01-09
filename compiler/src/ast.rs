@@ -72,7 +72,8 @@ pub enum Stmt {
     BuiltinRuntimeCall(String, Vec<Expr>),
     CallCustom(String, Vec<Expr>),  // TODO: func name should be a VarId
     BroadcastWait(Expr),
-    UnknownOpcode(String)
+    UnknownOpcode(String),
+    Empty
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -160,6 +161,7 @@ pub enum SType {
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub enum Trigger {
     FlagClicked,
+    SpriteClicked,
     /// Corresponding name is NOT a safe_str
     Message(VarId),
     // KeyPressed(KeyId),

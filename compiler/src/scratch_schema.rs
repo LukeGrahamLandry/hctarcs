@@ -72,15 +72,10 @@ pub enum Input {
         OPERAND1: Operand,
         OPERAND2: Operand,
     },
-    // Order matters because Branch2 extends Branch1!
-    Branch2 {
+    Branch {
         CONDITION: Operand,
-        SUBSTACK: Operand,
-        SUBSTACK2: Operand,
-    },
-    Branch1 {
-        CONDITION: Operand,
-        SUBSTACK: Operand
+        SUBSTACK: Option<Operand>,
+        SUBSTACK2: Option<Operand>,
     },
     ForLoop {
         TIMES: Operand,
@@ -88,6 +83,9 @@ pub enum Input {
     },
     SecretForLoop {
         VALUE: Operand,
+        SUBSTACK: Operand
+    },
+    Forever {
         SUBSTACK: Operand
     },
     Val {  // variable set
@@ -196,6 +194,7 @@ pub enum Operand {
     TwoNames(usize, String, String),
     Nothing(usize, Option<()>),
     NNSS(usize, (usize, String, String)),
+    ListDefault(String, Vec<f64>),
     List(String, Vec<()>),
     // Unknown(Value)
 }
@@ -233,6 +232,7 @@ impl Operand {
             Operand::ArgName(s, _) |
             Operand::VarF(s, _) |
             Operand::List(s, _) |
+            Operand::ListDefault(s, _) |
             Operand::VarNum(s, _) |
             Operand::ArgRef(_, (_, s, _), _) => Some(s),
             Operand::NNSS(_, (_, s, _)) => Some(s),

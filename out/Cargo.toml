@@ -6,6 +6,7 @@ members = [  # TODO: figure out how to fix this so i can cargo clean && make tes
     "gen/mandelbrot",
     "gen/stamp_pos",
     "gen/async",
+    "gen/quick",
 ]
 resolver = "2"
 

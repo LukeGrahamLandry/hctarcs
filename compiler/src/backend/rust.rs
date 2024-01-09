@@ -25,6 +25,7 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
     assert_eq!(msg_fields.len(), msgs.len(), "lost some to mangling dup names");
     let msg_fields: String = msg_fields.into_iter().collect();
     let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false, current: None, loop_var_count: 0, has_captures: false }.emit()).collect();
+
     let sprites: String = project.targets
         .iter()
         .filter(|target| !target.is_stage)  // TODO: wrong cause stage can have scripts but im using it as special magic globals so need to rethink.
@@ -77,6 +78,7 @@ fn format_trigger(project: &Project, value: &Trigger) -> String {
     match value {
         Trigger::FlagClicked => "Trigger::FlagClicked".to_string(),
         Trigger::Message(name) => format!("Trigger::Message(Msg::{})", trigger_msg_ident(project, *name)),
+        Trigger::SpriteClicked => "Trigger::SpriteClicked".to_string(),
     }
 }
 
@@ -84,6 +86,7 @@ fn debug_trigger(project: &Project, value: &Trigger) -> String {
     match value {
         Trigger::FlagClicked => "Event: Flag Clicked".to_string(),
         Trigger::Message(v) => format!("Event: {}", &project.var_names[v.0].escape_default()),
+        Trigger::SpriteClicked => "Event: Sprite Clicked".to_string(),
     }
 }
 
@@ -318,7 +321,8 @@ impl<'src> Emit<'src> {
             Stmt::AskAndWait(question) => {
                 return RustStmt::IoAction(format!("IoAction::Ask({}.as_ref().into())", self.emit_expr(question, Some(SType::Str))))
             }
-            _ => format!("todo!(r#\"{:?}\"#);\n", stmt)
+            Stmt::Empty => return RustStmt::Empty,
+            _ => format!("todo!(r#\"{:?}\"#);\n", stmt)  // TODO: log comptime warning
         })
     }
 

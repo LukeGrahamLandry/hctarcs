@@ -93,7 +93,6 @@ impl<'a> Infer<'a> {
                 self.infer_block(s);
                 self.infer_block(s1);
             }
-
             Stmt::RepeatTimesCapture(e, s, v, _) => {
                 self.infer_expr(e);
                 self.infer_block(s);
@@ -105,12 +104,29 @@ impl<'a> Infer<'a> {
                 if let Some(t) = infer_type(self.project, &e) {
                     self.project.expect_type(v, t);
                 }
+                println!("infer {:?} {:?}", self.project.var_names[v.0], self.project.expected_types[v.0]);
             }
-            Stmt::ListSet(_, _, _, _) => {}
-            Stmt::ListPush(_, _, _) => {}
-            Stmt::ListClear(_, _) => {}
-            Stmt::ListRemoveIndex(_, _, _) => {}
-            Stmt::BuiltinRuntimeCall(_, _) => {}
+            Stmt::ListSet(_, v, i, val) => {
+                self.project.expect_type(v, SType::ListPoly);
+                self.infer_expr(i);
+                self.infer_expr(val);
+            }
+            Stmt::ListPush(_, v, e)  => {
+                self.project.expect_type(v, SType::ListPoly);
+                self.infer_expr(e);
+            }
+            Stmt::ListClear(_, v) => {
+                self.project.expect_type(v, SType::ListPoly);
+            }
+            Stmt::ListRemoveIndex(_, v, i) => {
+                self.project.expect_type(v, SType::ListPoly);
+                self.infer_expr(i);
+            }
+            Stmt::BuiltinRuntimeCall(_, args) => {
+                for a in args {
+                    self.infer_expr(a);
+                }
+            }
             Stmt::CallCustom(name, _) => {
                 if let Some((sprite_id, _)) = self.current_fn {
                     let func = self.project.targets[sprite_id].lookup_proc(&name);
@@ -140,6 +156,7 @@ impl<'a> Infer<'a> {
                 self.mark_async();
                 self.infer_expr(e);
             }
+            Stmt::Empty => {}
         }
     }
 

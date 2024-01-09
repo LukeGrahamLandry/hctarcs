@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use crate::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, Sprite, Str, Trigger, World};
+use crate::{HALF_SCREEN_HEIGHT, HALF_SCREEN_WIDTH, List, Poly, RenderBackend, RunMode, ScratchProgram, SEvent, Sprite, Str, Trigger, World};
 use egui::{Button, CollapsingHeader, Color32, Context, Direction, Grid, Layout, Rgba, Separator, Ui};
 use egui::plot::{Legend, Line, Plot, PlotBounds, PlotPoints, Points};
 use macroquad::prelude::GREEN;
@@ -68,6 +68,12 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                                 // println!("{i} {:?}",  user.get_var_names());
                                 CollapsingHeader::new(format!("Sprite {}", base._uid))
                                     .show(ui, |ui| {
+                                    if ui.button("Send Click").clicked() {
+                                        world.events.push_back(SEvent::Click(i));
+                                    }
+                                    ui.end_row();
+                                    ui.add_space(10.0);
+
                                     ui.label(format!("pos:({:.0}, {:.0}), dir:{:.0}, size:{:.0}% pen:({}, size:{}) costume:{}",
                                                      base.x, base.y, base.direction, base.size_frac * 100.0, base.pen.active, base.pen.size, base.costume));
                                     ui.end_row();
