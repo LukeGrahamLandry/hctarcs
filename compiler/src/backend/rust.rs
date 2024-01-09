@@ -24,7 +24,7 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
     }).collect();
     assert_eq!(msg_fields.len(), msgs.len(), "lost some to mangling dup names");
     let msg_fields: String = msg_fields.into_iter().collect();
-    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false, current: None, loop_var_count: 0 }.emit()).collect();
+    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false, current: None, loop_var_count: 0, has_captures: false }.emit()).collect();
     let sprites: String = project.targets
         .iter()
         .filter(|target| !target.is_stage)  // TODO: wrong cause stage can have scripts but im using it as special magic globals so need to rethink.
@@ -90,11 +90,12 @@ fn debug_trigger(project: &Project, value: &Trigger) -> String {
 struct Emit<'src> {
     project: &'src Project,
     target: &'src Sprite,
-    triggers: HashMap<Trigger, Vec<RustStmt>>,
+    triggers: HashMap<Trigger, Vec<String>>,
     current_is_async: bool,
     // This is used for loop closures cloning arguments. Scripts don't have arguments so its fine.
     current: Option<&'src Proc>,
     loop_var_count: usize,
+    has_captures: bool,
 }
 
 impl<'src> Emit<'src> {
@@ -126,14 +127,16 @@ impl<'src> Emit<'src> {
         for func in &self.target.scripts {
             self.current_is_async = true;  // Scripts are always async.
             self.current = None;
+            self.has_captures = false;
             let body = self.emit_block(&func.body);
+            let src = format!("{{ {} }}", FutMachine::from(body.clone()).to_src(&debug_trigger(self.project, &func.start), self.has_captures));
             // TODO: idk why im in a functional mood rn
             let handler = match self.triggers.remove(&func.start) {
                 Some(mut prev) => {
-                    prev.push(body);
+                    prev.push(src);
                     prev
                 },
-                None => vec![body],
+                None => vec![src],
             };
             self.triggers.insert(func.start.clone(), handler);
         }
@@ -141,15 +144,10 @@ impl<'src> Emit<'src> {
         let mut async_handlers = String::new();
 
         for (trigger, scripts) in &self.triggers {
-            let script_ioactions: Vec<_> = scripts
-                .iter()
-                .map(|script| format!("{{ {} }}", FutMachine::from(script.clone()).to_src(&debug_trigger(self.project, trigger))))
-                .collect();
-
             let action = if scripts.len() == 1 {
-                format!("{}", script_ioactions[0])
+                format!("{}", scripts[0])
             } else {
-                format!("IoAction::Concurrent(vec![{}])", script_ioactions.join(","))
+                format!("IoAction::Concurrent(vec![{}])", scripts.join(","))
             };
 
             async_handlers.push_str(&format!(
@@ -175,6 +173,7 @@ impl<'src> Emit<'src> {
     fn emit_custom_proc(&mut self, t: &'src Proc) -> String {
         self.current_is_async = t.needs_async;
         self.current = Some(t);
+        self.has_captures = !t.args.is_empty();
         // println!("emit {} async={}", t.name, t.needs_async);
         let args = if t.args.is_empty() {
             "".to_string()
@@ -193,7 +192,7 @@ impl<'src> Emit<'src> {
                     fn {name}(&self{args}) -> IoAction<Stage, Backend> {{
                         {src}
                     }}
-        "#, name=t.name, src=FutMachine::from(body).to_src(&format!("Call: {}", t.name)))
+        "#, name=t.name, src=FutMachine::from(body).to_src(&format!("Call: {}", t.name), self.has_captures))
 
 
             },
@@ -244,13 +243,16 @@ impl<'src> Emit<'src> {
             }
             Stmt::RepeatTimes(times, body) => {
                 self.loop_var_count += 1;
+                self.has_captures = true;
                 let id = self.loop_var_count;  // emit_block below invalidates.
+                let body = self.emit_block(body);
+                self.has_captures |= !body.is_sync();
                 let e = self.emit_expr(times, Some(SType::Number));
                 // There are no real locals so can't have name conflicts
                 return RustStmt::Loop {  // TODO: check edge cases of the as usize in scratch
                     var_decls: format!("let mut i{0} = 0; let mut end{0} = 0;", id),
                     init: format!("i{0} = 0usize; end{0} = {1} as usize;", id, e),
-                    body: Box::new(self.emit_block(body)),
+                    body: Box::new(body),
                     end_cond: rval(SType::Bool, format!("(i{0} >= end{0})", id)),
                     inc_stmt: format!("i{0} += 1;", id),
                     after_loop: Box::new(RustStmt::Empty),
@@ -259,6 +261,8 @@ impl<'src> Emit<'src> {
             Stmt::RepeatTimesCapture(times, body, v, s) => {
                 self.loop_var_count += 1;
                 let id = self.loop_var_count;  // emit_block below invalidates.
+                let body = self.emit_block(body);
+                self.has_captures |= !body.is_sync();
                 // There are no real locals so can't have name conflicts
                 let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly)).unwrap();
                 let iter_expr = rval(SType::Number, format!("((i{0} + 1) as f64)", id)).coerce(&var_ty);
@@ -267,7 +271,7 @@ impl<'src> Emit<'src> {
                 return RustStmt::Loop {
                     var_decls: format!("let mut i{0} = 0; let mut end{0} = 0;", id),
                     init: format!("i{0} = 0usize; end{0} = {1} as usize;", id, e),
-                    body: Box::new(self.emit_block(body)),
+                    body: Box::new(body),
                     end_cond: rval(SType::Bool, format!("(i{0} >= end{0})", id)),
                     inc_stmt: format!("{1} = {iter_expr}; i{0} += 1;", id, v),
                     after_loop: Box::new(RustStmt::Empty),
@@ -746,6 +750,7 @@ struct FutMachine {
 #[derive(Clone, Debug)]
 enum FutBranch {
     Basic(String, usize),
+    BasicNone(String, usize),
     Branch {
         cond: String,
         if_true: FutBlock,
@@ -766,10 +771,10 @@ impl FutMachine {
         let next = self.branches.len();
         match stmt {
             RustStmt::Empty => {
-                self.branches.push(FutBranch::Basic(format!("IoAction::None"), next + 1))
+                self.branches.push(FutBranch::BasicNone(format!(""), next + 1))
             }
             RustStmt::Sync(src) => {
-                self.branches.push(FutBranch::Basic(format!("{src}\nIoAction::None"), next + 1))
+                self.branches.push(FutBranch::BasicNone(format!("{src}"), next + 1))
             }
             RustStmt::Block(stmts) => {
                 assert!(!stmts.is_empty());
@@ -843,7 +848,7 @@ impl FutMachine {
 
     fn chain(&mut self, from: usize, to: usize) {
         match &mut self.branches[from] {
-            FutBranch::Basic(_, target) => {
+            FutBranch::Basic(_, target) | FutBranch::BasicNone(_, target) => {
                 *target = to;
             }
             &mut FutBranch::Branch { if_true, if_false, .. } => {
@@ -857,7 +862,7 @@ impl FutMachine {
 
     fn get_target(&self, i: usize) -> usize {
         match &self.branches[i] {
-            FutBranch::Basic(_, target) => {
+            FutBranch::Basic(_, target) | FutBranch::BasicNone(_, target) => {
                 *target
             }
             FutBranch::Branch { if_true, if_false, .. } => {
@@ -870,33 +875,64 @@ impl FutMachine {
         }
     }
 
-    fn to_src(self, name: &str) -> String {
+    fn to_src(self, name: &str, needs_alloc: bool) -> String {
+        if self.branches.len() == 1 {
+            return self.to_src_single(name, needs_alloc);
+        }
+
         let last= self.branches.len() + 1;
         let mut branches = String::new();
         for (i, b) in self.branches.into_iter().enumerate() {
             let body = match b {
+                FutBranch::BasicNone(src, next) => {
+                    format!("{{ {src}\ns = {}; continue; }}", next + 1)
+                }
                 FutBranch::Basic(src, next) => {
-                    format!("let __action = {{ {src} }};\nreturn (__action, Some(state!({})));", next + 1)
+                    format!("return ({{ {src} }}, Some(state!({})))", next + 1)
                 }
                 FutBranch::Branch { cond, if_true, if_false } => {
-                    format!("let __cond = {cond};\nreturn if __cond {{ (IoAction::None, Some(state!({}))) }} else {{ (IoAction::None, Some(state!({}))) }};", if_true.first+1, if_false.first+1)
+                    format!("{{ let __cond = {cond};\ns = if __cond {{ {} }} else {{ {} }};\ncontinue; }}", if_true.first+1, if_false.first+1)
                 }
                 FutBranch::BackPatch => unreachable!(),
             };
-            branches += &format!("{0} => {{ {1} }},\n", i+1, body);
+            branches += &format!("{0} => {1},\n", i+1, body);
         }
 
+        let f = if needs_alloc { "fut_a" } else { "fut" };
         // Note: header is outside the closure so it only runs once.
         format!(r#"{header}
-        IoAction::FutMachine(Box::new(move |ctx, this, s| {{
+        {f}("{name}", move |ctx, this, s| {{
             let this: &mut Self = ctx.trusted_cast(this);
-            match Into::<u16>::into(s) {{
-                0 => unreachable!(),
-                {branches}
-                {last} => (IoAction::None, None),
-                _ => unreachable!(),
+            let mut s: u16 = s.into();
+            loop {{
+                 match s {{
+                    {branches}
+                    {last} => return (IoAction::None, None),
+                    _ => unreachable!(),
+                }}
             }}
-        }}), "{name}", state!(1))"#, header=self.header)
+           unreachable!()
+        }})"#, header=self.header)
+    }
+
+    // TODO: if function calls had the ctx, this could fully inline the FutMachine
+    fn to_src_single(self, name: &str, needs_alloc: bool) -> String {
+        assert_eq!(self.branches.len(), 1);
+        let b = self.branches.into_iter().next().unwrap();
+        let body = match b {
+            FutBranch::BasicNone(src, _) => format!("{src}\nreturn (IoAction::None, None)"),
+            FutBranch::Basic(src, _) => format!("return ({{ {src} }}, None)"),
+            FutBranch::Branch { .. } | FutBranch::BackPatch => unreachable!(),
+        };
+
+        let f = if needs_alloc { "fut_a" } else { "fut" };
+        // Note: header is outside the closure so it only runs once.
+        format!(r#"{header}
+        {f}("{name}", move |ctx, this, s| {{
+            let this: &mut Self = ctx.trusted_cast(this);
+            debug_assert_eq!(u16::from(s), 1);
+            {body}
+        }})"#, header=self.header)
     }
 }
 

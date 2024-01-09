@@ -4,10 +4,6 @@ r##"
 #![allow(non_camel_case_types)]
 #![allow(unused)]
 use runtime::*;
-use sprite::*;
-use poly::*;
-use backend::{{RenderBackend, RenderHandle}};
-use runtime::builtins::*;
 use std::any::Any;
 type Ctx<'a, 'b> = FrameCtx<'a, 'b, Stage, Backend>;
 

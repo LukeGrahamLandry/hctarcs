@@ -91,10 +91,28 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for IoAction<S, R> {
     }
 }
 
+/// This should only be called by the compiler.
 #[macro_export]
 macro_rules! state {
     ($n:expr) => {{
-        debug_assert_ne!($n, 0);
+        debug_assert_ne!($n, 0, "ICE");
         unsafe { std::num::NonZeroU16::new_unchecked($n) }
     }};
+}
+
+pub fn fut<S, R, F>(name: &'static str, f: F) -> IoAction<S, R>
+    where S: ScratchProgram<R>,
+          R: RenderBackend<S>,
+          F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any, NonZeroU16) -> FutRes<S, R> + 'static
+{
+    assert_zero_sized::<F>();
+    IoAction::FutMachine(Box::new(f), name, state!(1))
+}
+
+pub fn fut_a<S, R, F>(name: &'static str, f: F) -> IoAction<S, R>
+    where S: ScratchProgram<R>,
+          R: RenderBackend<S>,
+          F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any, NonZeroU16) -> FutRes<S, R> + 'static
+{
+    IoAction::FutMachine(Box::new(f), name, state!(1))
 }

@@ -8,8 +8,29 @@ Also build script for website demos.
 TODO: why are my egui events super sluggish in wasm build? must be something wrong with egui-macroquad cause the egui demo is fine. 
 
 - wait
-- clone
+- days since 2000
+- clone, delete this clone
+- broadcast (no wait)
+
 - key input
+- timer, reset timer
+- when sprite clicked 
+- mouse down, mouse x, mouse y, key down 
+- touching
+
+## How fast
+
+Added tracking of which closures are zero sized. 
+Doesn't actually change anything, I just want to see because 
+im trying to decide if they should capture state instead of runtime passing it in. 
+TODO: maybe do that only for the ones that have to allocate anyway. 
+
+The miscompiled linrays where it thinks fn return is async: 
+- ~1.2s (before fut machine, commit: fiddling with ui)
+- ~0.5s (with fut machine, commit: track alloc)
+(both edited to add `Stmt::StopScript => self.mark_async()`, without that its like 220ms)
+
+And it's still dramatically inefficient. 
 
 ## Collapsing Futures (Jan 9)
 
