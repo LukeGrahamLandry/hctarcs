@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::mem;
+use std::num::NonZeroU16;
 use crate::ast::{BinOp, Expr, Proc, Project, Scope, Sprite, Stmt, SType, Trigger, UnOp, VarId};
 use crate::parse::{infer_type, runtime_prototype, safe_str};
 use crate::{AssetPackaging, Target};
@@ -24,7 +25,7 @@ pub fn emit_rust(project: &Project, backend: Target, _assets: AssetPackaging) ->
     }).collect();
     assert_eq!(msg_fields.len(), msgs.len(), "lost some to mangling dup names");
     let msg_fields: String = msg_fields.into_iter().collect();
-    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false, current: None }.emit()).collect();
+    let body: String = project.targets.iter().map(|target| Emit { project, target, triggers: HashMap::new(), current_is_async: false, current: None, loop_var_count: 0 }.emit()).collect();
     let sprites: String = project.targets
         .iter()
         .filter(|target| !target.is_stage)  // TODO: wrong cause stage can have scripts but im using it as special magic globals so need to rethink.
@@ -87,6 +88,7 @@ struct Emit<'src> {
     current_is_async: bool,
     // This is used for loop closures cloning arguments. Scripts don't have arguments so its fine.
     current: Option<&'src Proc>,
+    loop_var_count: usize,
 }
 
 impl<'src> Emit<'src> {
@@ -228,6 +230,7 @@ impl<'src> Emit<'src> {
             }
             Stmt::RepeatUntil(cond, body) => { // TODO: is this supposed to be do while?
                 return RustStmt::Loop {
+                    var_decls: "".to_string(),
                     init: format!(""),
                     body: Box::new(self.emit_block(body)),
                     end_cond: self.emit_expr(cond, Some(SType::Bool)),
@@ -237,26 +240,34 @@ impl<'src> Emit<'src> {
                 };
             }
             Stmt::RepeatTimes(times, body) => {
+                self.loop_var_count += 1;
+                let id = self.loop_var_count;  // emit_block below invalidates.
+                let e = self.emit_expr(times, Some(SType::Number));
                 // There are no real locals so can't have name conflicts
                 return RustStmt::Loop {  // TODO: check edge cases of the as usize in scratch
-                    init: format!("let mut i = 0usize; let end = {} as usize;", self.emit_expr(times, Some(SType::Number))),
+                    var_decls: format!("let mut i{0} = 0; let mut end{0} = 0;", id),
+                    init: format!("i{0} = 0usize; end{0} = {1} as usize;", id, e),
                     body: Box::new(self.emit_block(body)),
-                    end_cond: rval(SType::Bool, "(i >= end)"),
-                    inc_stmt: format!("i += 1;"),
+                    end_cond: rval(SType::Bool, format!("(i{0} >= end{0})", id)),
+                    inc_stmt: format!("i{0} += 1;", id),
                     clone_args: self.clone_captured_args(),
                     after_loop: Box::new(RustStmt::Empty),
                 };
             }
             Stmt::RepeatTimesCapture(times, body, v, s) => {
+                self.loop_var_count += 1;
+                let id = self.loop_var_count;  // emit_block below invalidates.
                 // There are no real locals so can't have name conflicts
                 let var_ty = self.project.expected_types[v.0].clone().or(Some(SType::ListPoly)).unwrap();
-                let iter_expr = rval(SType::Number, "((i + 1) as f64)".to_string()).coerce(&var_ty);
-
+                let iter_expr = rval(SType::Number, format!("((i{0} + 1) as f64)", id)).coerce(&var_ty);
+                let e = self.emit_expr(times, Some(SType::Number));
+                let v = self.ref_var(*s, *v, true);
                 return RustStmt::Loop {
-                    init: format!("let mut i = 0usize; let end = {} as usize;", self.emit_expr(times, Some(SType::Number))),
+                    var_decls: format!("let mut i{0} = 0; let mut end{0} = 0;", id),
+                    init: format!("i{0} = 0usize; end{0} = {1} as usize;", id, e),
                     body: Box::new(self.emit_block(body)),
-                    end_cond: rval(SType::Bool, "(i >= end)"),
-                    inc_stmt: format!("{} = {iter_expr}; i += 1;", self.ref_var(*s, *v, true)),
+                    end_cond: rval(SType::Bool, format!("(i{0} >= end{0})", id)),
+                    inc_stmt: format!("{1} = {iter_expr}; i{0} += 1;", id, v),
                     clone_args: self.clone_captured_args(),
                     after_loop: Box::new(RustStmt::Empty),
                 };
@@ -528,6 +539,7 @@ enum RustStmt {
     Block(Vec<RustStmt>),
     IoAction(String),
     Loop {
+        var_decls: String,
         init: String,
         body: Box<RustStmt>,
         end_cond: RustValue,
@@ -712,10 +724,10 @@ impl RustStmt {
             RustStmt::Sync(s) => Some(s),
             RustStmt::Block(stmts) => sync_block(stmts),
             RustStmt::IoAction(_) => None,
-            RustStmt::Loop { init, body, end_cond, inc_stmt, after_loop, .. } => {
+            RustStmt::Loop { var_decls, init, body, end_cond, inc_stmt, after_loop, .. } => {
                 // TODO: test that fails if you forget after_loop here
                 match (body.to_sync(), after_loop.to_sync()) {
-                    (Some(body), Some(after)) => Some(format!("{init}\n while !({end_cond}) {{ {inc_stmt} {body} }} {after}")),
+                    (Some(body), Some(after)) => Some(format!("{var_decls} {init}\n while !({end_cond}) {{ {inc_stmt} {body} }} {after}")),
                     _ => None
                 }
             }
@@ -788,9 +800,10 @@ impl RustStmt {
                 }
             },
             RustStmt::IoAction(a) => RsAct::Closed(a),
-            RustStmt::Loop { init, body, end_cond, inc_stmt, clone_args, after_loop } => {
+            RustStmt::Loop { var_decls, init, body, end_cond, inc_stmt, clone_args, after_loop } => {
                 let body_src = body.to_src().coerce_open();
                 RsAct::Open(format!(r#"
+                    {var_decls}
                     {init}
                     {CALL_ACTION}
                     {clone_args}
@@ -813,9 +826,180 @@ impl RustStmt {
             RustStmt::Empty => unreachable!()
         }
     }
+
+    fn to_block(self) -> Vec<RustStmt> {
+        match self {
+            RustStmt::Empty => vec![],
+            RustStmt::Block(stmts) => stmts,
+            stmt => vec![stmt]
+        }
+    }
 }
 
+#[derive(Clone, Default, Debug)]
+struct FutMachine {
+    // Each is a block that evaluates to an ioaction.
+    branches: Vec<FutBranch>,
+    header: String,
+}
 
+#[derive(Clone, Debug)]
+enum FutBranch {
+    Basic(String, usize),
+    Branch {
+        cond: String,
+        if_true: FutBlock,
+        if_false: FutBlock,
+    },
+    BackPatch
+}
+
+#[derive(Copy, Clone, Debug)]
+struct FutBlock {
+    first: usize,  // The block you should jump to for this stmt.
+    last: usize,  // The last block of this stmt which will jump to the next stmt.
+}
+
+impl FutMachine {
+    /// The initial jump target is always the next thing to be pushed.
+    fn push(&mut self, stmt: RustStmt) -> FutBlock {
+        let next = self.branches.len();
+        match stmt {
+            RustStmt::Empty => {
+                self.branches.push(FutBranch::Basic(format!("IoAction::None"), next + 1))
+            }
+            RustStmt::Sync(src) => {
+                self.branches.push(FutBranch::Basic(format!("{src}\nIoAction::None"), next + 1))
+            }
+            RustStmt::Block(stmts) => {
+                assert!(!stmts.is_empty());
+                let mut stmts = stmts.into_iter();
+                let mut prev = self.push(stmts.next().unwrap());
+                let index_in = prev.first;
+                for stmt in stmts.into_iter() {
+                    let span = self.push(stmt);
+                    self.chain(prev.last, span.first);
+                    prev = span;
+                }
+                return FutBlock {
+                    first: index_in,
+                    last: prev.last,
+                }
+            }
+            RustStmt::IoAction(a) => {
+                self.branches.push(FutBranch::Basic(a, next + 1))
+            }
+            RustStmt::Loop { var_decls, init, body, end_cond, inc_stmt, after_loop, .. } => {
+                self.header += &var_decls;
+                self.push(RustStmt::Sync(init));
+                let branch_at = self.branches.len();
+                self.branches.push(FutBranch::BackPatch);
+                let body = self.push(*body);
+                let trailing = self.push(*after_loop);  // TODO: remove this from RustStmt::Loop
+                self.branches[branch_at] = FutBranch::Branch {
+                    cond: end_cond.text,
+                    if_true: trailing,
+                    if_false: body,
+                };
+                self.chain(body.last, branch_at);
+
+
+            }
+            RustStmt::If { cond, if_true, if_false } => {
+                self.branches.push(FutBranch::BackPatch);
+                let if_true = self.push(*if_true);
+                let if_false = match if_false {
+                    None => self.push(RustStmt::Empty), // TODO: skip
+                    Some(s) => self.push(*s),
+                };
+                self.branches[next] = FutBranch::Branch {
+                    cond,
+                    if_true,
+                    if_false,
+                };
+                assert_eq!(self.get_target(if_false.last), if_false.last + 1);
+                self.chain(if_true.last, self.get_target(if_false.last));
+                assert_eq!(self.get_target(if_true.last), self.get_target(if_false.last), "failed to make if rejoin");
+                assert_eq!(self.get_target(next), if_false.last + 1, "get_target(if) failed");
+                let empty = self.push(RustStmt::Empty); // TODO: dont waste a jump
+                return FutBlock {
+                    first: next,
+                    last: empty.last,
+                }
+            }
+        };
+
+        FutBlock {
+            first: next,
+            last: next,
+        }
+    }
+
+    fn chain(&mut self, from: usize, to: usize) {
+        match &mut self.branches[from] {
+            FutBranch::Basic(_, target) => {
+                *target = to;
+            }
+            &mut FutBranch::Branch { if_true, if_false, .. } => {
+                assert_eq!(self.get_target(if_true.last), self.get_target(if_false.last), "if no rejoin OR TODO: cant chain from loop");
+                self.chain(if_true.last, to);
+                self.chain(if_false.last, to);
+            },
+            FutBranch::BackPatch => todo!(),
+        }
+    }
+
+    fn get_target(&self, i: usize) -> usize {
+        match &self.branches[i] {
+            FutBranch::Basic(_, target) => {
+                *target
+            }
+            FutBranch::Branch { if_true, if_false, .. } => {
+                let if_true = self.get_target(if_true.last);
+                let if_false = self.get_target(if_false.last);
+                assert_eq!(if_true, if_false, "expected if rejoin");
+                if_true
+            },
+            FutBranch::BackPatch => todo!(),
+        }
+    }
+
+    fn to_src(self, name: &str) -> String {
+        let mut branches = String::new();
+        for (i, b) in self.branches.into_iter().enumerate() {
+            let body = match b {
+                FutBranch::Basic(src, next) => {
+                    format!("({{ {src} }}, {next})")
+                }
+                FutBranch::Branch { cond, if_true, if_false } => {
+                    format!("if {cond} {{ (IoAction::None, state!({})) }} else {{ (IoAction::None, state!({})) }}", if_true.first+1, if_false.first+1)
+                }
+                FutBranch::BackPatch => unreachable!(),
+            };
+
+            branches += &format!("{0} => {1},\n", i+1, body);
+
+        }
+
+        format!(r#"{header}
+        IoAction::FutMachine(Box::new(move |ctx, this, state: NonZeroU16| {{
+            let this: &mut Self = ctx.trusted_cast(this);
+            match state.into::<u16>() {{
+                0 => unreachable!(),
+                {branches},
+                _ => unreachable!(),
+            }}
+        }}, "{name}", state!(1))"#, header=self.header)
+    }
+}
+
+impl From<RustStmt> for FutMachine {
+    fn from(value: RustStmt) -> Self {
+        let mut s = FutMachine::default();
+        s.push(value);
+        s
+    }
+}
 
 // TODO: remove the old version of this
 fn collapse_sync_runs(body: Vec<RustStmt>) -> Vec<RustStmt> {

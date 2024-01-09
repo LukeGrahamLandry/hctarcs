@@ -175,3 +175,11 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S>> Debug for Callback<S, R> {
         }
     }
 }
+
+#[macro_export]
+macro_rules! state {
+    ($n:expr) => {{
+        debug_assert_ne!($n, 0);
+        unsafe { std::num::NonZeroU16::new_unchecked($n) }
+    }};
+}

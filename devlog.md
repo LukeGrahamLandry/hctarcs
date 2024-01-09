@@ -30,6 +30,10 @@ that you didn't really have it before either.
 
 NOTE: I could try to use rust generators but I think i'll have the same problem as with async where you can't have it relinquish references on yield. 
 
+it gets worse before it gets better. 
+separate loop var declares from init. you dont need the =0 now cause it sees that never read before write but that wont be true once its all in a switch stmt. 
+TODO: its sad that this makes sync code look dumber too. should fix that. 
+
 ## TODO: porting tests
 
 It's such a pain to use the gui so need to add everything im using to scratch-compiler. 
