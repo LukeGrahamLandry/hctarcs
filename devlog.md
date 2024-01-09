@@ -1,5 +1,17 @@
 
-## TODO: collapsing futures 
+## TODO: porting tests
+
+It's such a pain to use the gui so need to add everything im using to scratch-compiler. 
+Also integration for calling it. 
+Also build script for website demos. 
+
+TODO: why are my egui events super sluggish in wasm build? must be something wrong with egui-macroquad cause the egui demo is fine. 
+
+- wait
+- clone
+- key input
+
+## Collapsing Futures (Jan 9)
 
 Before i start messing with things clarify the problem statement. 
 The way I got it working involved insane double wrapping of everything to be able to pass it to the event loop without running side effects too early. 
@@ -34,13 +46,15 @@ it gets worse before it gets better.
 separate loop var declares from init. you dont need the =0 now cause it sees that never read before write but that wont be true once its all in a switch stmt. 
 TODO: its sad that this makes sync code look dumber too. should fix that. 
 
-## TODO: porting tests
+holy shit it looks so much nicer and the compiler is so much simpler. 
+doesnt work tho lol
+- missing a plus one for basic stmt jump so they loop on themselves 
+- forgot to return the span for loop so was just counting first stmt as body
+ayy fixed. 
 
-It's such a pain to use the gui so need to add everything im using to scratch-compiler. 
-Also integration for calling it. 
-Also build script for website demos. 
-
-TODO: why are my egui events super sluggish in wasm build? must be something wrong with egui-macroquad cause the egui demo is fine. 
+so now user functions use state machine. 
+TODO: do it for recieve as well
+TODO: the state machines are still really inefficent and return IoAction_None a lot just to use the runtime to cycle the switch statement. 
 
 ## fixing tres (Jan 7)
 

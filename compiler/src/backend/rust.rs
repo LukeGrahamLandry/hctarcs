@@ -183,19 +183,26 @@ impl<'src> Emit<'src> {
             None => {
                 assert!(t.needs_async, "expected async fn {} \n{:?}", t.name, body);
                 // TODO: list of reserved variable names.
+        //         format!(r#"
+        //             fn {name}(&self{args}) -> IoAction<Stage, Backend> {{
+        //                 IoAction::UserFnBody(Box::new(move |ctx, this| {{
+        //                     let this: &mut Self = ctx.trusted_cast(this);
+        //                     let __inner: IoAction<Stage, Backend> = {{ {src} }};
+        //                     __inner.done()
+        //                 }}), "{name}")
+        //             }}
+        // "#, name=t.name, src=body.to_src().coerce_open())
                 format!(r#"
                     fn {name}(&self{args}) -> IoAction<Stage, Backend> {{
-                        IoAction::UserFnBody(Box::new(move |ctx, this| {{
-                            let this: &mut Self = ctx.trusted_cast(this);
-                            let __inner: IoAction<Stage, Backend> = {{ {src} }};
-                            __inner.done()
-                        }}), "{name}")
+                        {src}
                     }}
-        "#, name=t.name, src=body.to_src().coerce_open())
+        "#, name=t.name, src=FutMachine::from(body).to_src(&t.name))
+
+
             },
             Some(src) => {
                 assert!(!t.needs_async);
-                format!("fn {}(&mut self, ctx: &mut Ctx{}){{\nlet this = self;\nnosuspend!({{ {src} }}) }}\n\n", t.name, args)
+                format!("fn {}(&mut self, ctx: &mut Ctx{}){{\nlet this = self;\n{{ {src} }} }}\n\n", t.name, args)
             }
         }
     }
@@ -288,7 +295,7 @@ impl<'src> Emit<'src> {
                     return RustStmt::IoAction(format!("this.{name}({args})"));
 
                 } else {
-                    format!("nosuspend!(this.{name}(ctx, {args}));\n")
+                    format!("this.{name}(ctx, {args});\n")
                 }
             }
             Stmt::ListSet(s, v, i, item) => {
@@ -778,7 +785,7 @@ impl RustStmt {
                         let mut src = format!("(IoAction::CallOnce(Box::new(move |ctx, this|{{ IoAction::None");
                         for stmt in actions.into_iter() {
                             let action = match stmt {
-                                RsAct::Sync(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); nosuspend!({{ {s} }});\nIoAction::None"),
+                                RsAct::Sync(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); {{ {s} }};\nIoAction::None"),
                                 RsAct::Open(s) |
                                 RsAct::Closed(s) => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); \n{s}"),
                                 RsAct::Empty => format!(".then_once(move |ctx, this|{{let this: &mut Self = ctx.trusted_cast(this); \nIoAction::None"),
@@ -894,16 +901,22 @@ impl FutMachine {
                 self.push(RustStmt::Sync(init));
                 let branch_at = self.branches.len();
                 self.branches.push(FutBranch::BackPatch);
-                let body = self.push(*body);
+                let body_start = self.push(RustStmt::Sync(inc_stmt)).first;
+                let body_last = self.push(*body).last;
                 let trailing = self.push(*after_loop);  // TODO: remove this from RustStmt::Loop
                 self.branches[branch_at] = FutBranch::Branch {
                     cond: end_cond.text,
                     if_true: trailing,
-                    if_false: body,
+                    if_false: FutBlock {
+                        first: body_start,
+                        last: body_last,
+                    },
                 };
-                self.chain(body.last, branch_at);
-
-
+                self.chain(body_last, branch_at);
+                return FutBlock {
+                    first: next,
+                    last: trailing.last,
+                }
             }
             RustStmt::If { cond, if_true, if_false } => {
                 self.branches.push(FutBranch::BackPatch);
@@ -965,31 +978,31 @@ impl FutMachine {
     }
 
     fn to_src(self, name: &str) -> String {
+        let last= self.branches.len() + 1;
         let mut branches = String::new();
         for (i, b) in self.branches.into_iter().enumerate() {
             let body = match b {
                 FutBranch::Basic(src, next) => {
-                    format!("({{ {src} }}, {next})")
+                    format!("let __action = {{ {src} }};\nreturn (__action, Some(state!({})));", next + 1)
                 }
                 FutBranch::Branch { cond, if_true, if_false } => {
-                    format!("if {cond} {{ (IoAction::None, state!({})) }} else {{ (IoAction::None, state!({})) }}", if_true.first+1, if_false.first+1)
+                    format!("let __cond = {cond};\nreturn if __cond {{ (IoAction::None, Some(state!({}))) }} else {{ (IoAction::None, Some(state!({}))) }};", if_true.first+1, if_false.first+1)
                 }
                 FutBranch::BackPatch => unreachable!(),
             };
-
-            branches += &format!("{0} => {1},\n", i+1, body);
-
+            branches += &format!("{0} => {{ {1} }},\n", i+1, body);
         }
 
         format!(r#"{header}
-        IoAction::FutMachine(Box::new(move |ctx, this, state: NonZeroU16| {{
+        IoAction::FutMachine(Box::new(move |ctx, this, s| {{
             let this: &mut Self = ctx.trusted_cast(this);
-            match state.into::<u16>() {{
+            match Into::<u16>::into(s) {{
                 0 => unreachable!(),
-                {branches},
+                {branches}
+                {last} => (IoAction::None, None),
                 _ => unreachable!(),
             }}
-        }}, "{name}", state!(1))"#, header=self.header)
+        }}), "{name}", state!(1))"#, header=self.header)
     }
 }
 
@@ -1027,7 +1040,7 @@ enum RsAct {
 impl RsAct {
     fn coerce_open(self) -> String {
         match self {
-            RsAct::Sync(s) => format!("nosuspend!({{ {s} }});\nIoAction::None"),
+            RsAct::Sync(s) => format!("{{ {s} }};\nIoAction::None"),
             RsAct::Open(s) => s,
             RsAct::Closed(s) => s,
             RsAct::Empty => String::from("IoAction::None")
@@ -1038,7 +1051,7 @@ impl RsAct {
     fn coerce_closed(self) -> String {
         match self {
             RsAct::Sync(s) => {
-                format!("({CALL_ACTION_ONCE}nosuspend!({{ {s} }});\nIoAction::None.done() }})))")
+                format!("({CALL_ACTION_ONCE}{{ {s} }};\nIoAction::None.done() }})))")
             }
             RsAct::Open(s) => format!("({CALL_ACTION_ONCE}{s}.done() }})))"),
             RsAct::Closed(s) => s,
