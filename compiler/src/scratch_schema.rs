@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
+use crate::ast::Expr;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScratchProject {
@@ -236,6 +237,19 @@ impl Operand {
             Operand::VarNum(s, _) |
             Operand::ArgRef(_, (_, s, _), _) => Some(s),
             Operand::NNSS(_, (_, s, _)) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn var_default_opt(&self) -> Option<Expr> {
+        match self {
+            Operand::VarF(_, val) => Some(Expr::Literal(format!("{val}"))),
+            Operand::VarNum(_, val) => Some(Expr::Literal(format!("{val}"))),
+            Operand::ListDefault(_, nums) => if nums.is_empty() {
+                Some(Expr::Empty)  // TODO: this case should be different Operand but i the vec eats it. need to reorder
+            } else {
+                Some(Expr::ListLiteral(nums.clone()))
+            }
             _ => None,
         }
     }

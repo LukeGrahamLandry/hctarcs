@@ -16,6 +16,7 @@ pub struct Sprite {
     pub scripts: Vec<Func>,
     pub procedures: Vec<Proc>,
     pub fields: Vec<VarId>,
+    pub field_defaults: Vec<Option<Expr>>,
     pub name: String,
     pub is_stage: bool,
     pub is_singleton: bool,
@@ -97,7 +98,8 @@ pub enum Expr {
 
     BuiltinRuntimeGet(String),
     Literal(String),  // TODO: parse it in parser
-    UnknownExpr(String)
+    UnknownExpr(String),
+    ListLiteral(Vec<f64>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]

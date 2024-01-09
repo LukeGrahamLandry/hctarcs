@@ -104,7 +104,6 @@ impl<'a> Infer<'a> {
                 if let Some(t) = infer_type(self.project, &e) {
                     self.project.expect_type(v, t);
                 }
-                println!("infer {:?} {:?}", self.project.var_names[v.0], self.project.expected_types[v.0]);
             }
             Stmt::ListSet(_, v, i, val) => {
                 self.project.expect_type(v, SType::ListPoly);

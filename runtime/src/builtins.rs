@@ -170,16 +170,14 @@ impl<'msg, 'frame: 'msg, S: ScratchProgram<R>, R: RenderBackend<S>> FrameCtx<'ms
         }
     }
 
-    // TODO: this is not using the right epoch
     pub fn sensing_dayssince2000(&self) -> f64 {
-        const MS_PER_DAY: u128 = 31536000;
-        const SECS_OFFSET: u64 = 0;  // TODO
+        const SECS_PER_DAY: f64 = 86400.0;
+        const SECS_OFFSET: u64 = (SECS_PER_DAY * 365.25 * 30.0) as u64;  // TODO
 
         let epoch = SystemTime::UNIX_EPOCH.add(Duration::from_secs(SECS_OFFSET));
         let since = SystemTime::now().duration_since(epoch).unwrap();
-        (MS_PER_DAY * since.as_millis()) as f64 / 1000.0
+        since.as_secs_f64() / SECS_PER_DAY
     }
-
 }
 
 thread_local! {

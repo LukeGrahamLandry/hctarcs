@@ -1,5 +1,5 @@
 r#"
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct {name} {{
 {fields}}}
 impl {name} {{
@@ -36,6 +36,14 @@ impl Sprite<Stage, Backend> for {name} {{
          match i {{
             {visit_vars_mut}
             _ => V::Fail,
+        }}
+    }}
+}}
+
+impl Default for {name} {{
+    fn default() -> Self {{
+        Self {{
+            {default_fields}
         }}
     }}
 }}

@@ -59,8 +59,20 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                             CollapsingHeader::new(format!("Globals"))
                                 .show(ui, |ui| {
                                     for (i, name) in world.globals.get_var_names().into_iter().enumerate() {
-                                        ui.label(format!("{name} = {:?}", world.globals.var(i)));
-                                        ui.end_row();
+                                        match world.globals.var(i) { // TODO: copy-n-paste
+                                            VarBorrow::List(lst) => {
+                                                CollapsingHeader::new(format!("{name} = List({len})", len=lst.len())
+                                                ).show(ui, |ui| {
+                                                    for (i, value) in lst.iter().enumerate() {
+                                                        ui.label(format!("[{i}] {value:?}"));
+                                                        ui.end_row();
+                                                    }
+                                                });
+                                            }
+                                            other => {
+                                                ui.label(format!("{name} = {:?}", other));
+                                            }
+                                        }
                                     }
                                 });
                             ui.end_row();
@@ -80,7 +92,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> Debugger<S, R> {
                                     for (i, name) in user.get_var_names().into_iter().enumerate() {
                                         match user.var(i) {
                                             VarBorrow::List(lst) => {
-                                                CollapsingHeader::new(format!("{name} = List({})", lst.len())
+                                                CollapsingHeader::new(format!("{name} = List({len})", len=lst.len())
                                                 ).show(ui, |ui| {
                                                     for (i, value) in lst.iter().enumerate() {
                                                         ui.label(format!("[{i}] {value:?}"));

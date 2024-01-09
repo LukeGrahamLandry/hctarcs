@@ -107,12 +107,14 @@ impl<'src> Emit<'src> {
         let mut visit_vars = String::new();
         let mut visit_vars_mut = String::new();
         let mut fields = String::new();
+        let mut default_fields = String::new();
 
         // TODO: factor out debug info stuff
-        for (i, v) in self.target.fields.iter().enumerate() {
+        for (i, (v, value)) in self.target.fields.iter().zip(self.target.field_defaults.iter()).enumerate() {
             let name = &self.project.var_names[v.0];
             fields += &format!("   {}: {},\n", name, self.inferred_type_name(*v));
-            let constructor= &match self.inferred_type(*v) {
+            let ty = self.inferred_type(*v);
+            let constructor= &match ty {
                 SType::Number => format!("Num(&"),
                 SType::Bool => format!("Bool(&"),
                 SType::Str => format!("Str(&"),
@@ -122,6 +124,11 @@ impl<'src> Emit<'src> {
             var_names += &format!("\"{}\",", name.escape_default());
             visit_vars += &format!("{i} => V::{constructor}self.{name}),");   // TODO: debug_assert safe string
             visit_vars_mut += &format!("{i} => V::{constructor}mut self.{name}),");
+            let value = match value {
+                None | Some(Expr::Empty) => format!("Default::default()"),
+                Some(e) => self.emit_expr(e, Some(ty)).text,
+            };
+            default_fields += &format!("   {}: {},\n", name, value);
         }
 
         let procs: String = self.target.procedures.iter().map(|t| self.emit_custom_proc(t)).collect();
@@ -169,7 +176,8 @@ impl<'src> Emit<'src> {
             async_handlers=async_handlers,
             visit_vars=visit_vars,
             var_names=var_names,
-            visit_vars_mut=visit_vars_mut
+            visit_vars_mut=visit_vars_mut,
+            default_fields=default_fields
         )
     }
 
@@ -469,6 +477,11 @@ impl<'src> Emit<'src> {
                 Some(SType::Bool) => "false",
                 Some(SType::ListPoly) => unreachable!("Null list."),
             }.to_string()),
+            Expr::ListLiteral(data) => {  // Only used for default values.
+                // rustc fucking cannot parse 200k list literal
+                let items: Vec<_> = data.iter().map(ToString::to_string).collect();
+                rval(SType::ListPoly, format!("str_to_poly_list(\"{}\")", items.join(",")))
+            }
             _ => rval(t.unwrap(), format!("todo!(r#\"{:?}\"#)", expr))
         };
         value.coerce_m(&t)
@@ -579,6 +592,11 @@ impl RustValue {
             return rval(*want, format!("Poly::from({}).as_str()", self.text))
         } else if want == &SType::Number && &self.ty == &SType::Str {
             panic!("Poly::from({self:?}).as_num()");
+        } else if want == &SType::ListPoly {
+            return rval(*want, format!("List::<Poly>::from(vec![Poly::from({})])", self.text));
+        } else if self.ty == SType::ListPoly {
+            // TODO: assert one entry
+            return rval(SType::Poly, format!("{}[1.0]", self.text)).coerce(want);
         } else {
             panic!("coerce want {:?} but found {self:?}", want);
         }

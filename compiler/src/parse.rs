@@ -30,15 +30,19 @@ impl From<ScratchProject> for Project {
         let mut stages = value.targets.iter().filter(|t| t.isStage);
         let stage = stages.next().unwrap();
         assert!(stages.next().is_none());
-        let globals = get_vars(&mut proj, stage);
+        let globals_vars = get_vars(&mut proj, stage);
+        let globals = globals_vars.iter().map(|(k, v, _)| (k.clone(), *v)).collect();
 
+        // TODO: using globals_vars this way is ten billion allocations for no reason
         for target in &value.targets {
-            let fields = if target.isStage {  // TODO: ehhhh idk about this
-                globals.clone()
+            let vars = if target.isStage {  // TODO: ehhhh idk about this
+                globals_vars.clone()
             } else {
                 get_vars(&mut proj, target)
             };
-            let result = Parser { project: &mut proj, target, fields, globals: &globals, args_by_name: HashMap::new(), procedures: HashMap::new(), needs_async: false }.parse();
+            let fields = vars.iter().map(|(k, v, _)| (k.clone(), *v)).collect();
+            let field_defaults = vars.iter().map(|(_, k, v)| (*k, v.clone())).collect();
+            let result = Parser { project: &mut proj, target, fields, field_defaults, globals: &globals, args_by_name: HashMap::new(), procedures: HashMap::new(), needs_async: false }.parse();
             proj.targets.push(result);
         }
 
@@ -47,15 +51,14 @@ impl From<ScratchProject> for Project {
     }
 }
 
-// TODO: handle default values
-fn get_vars(proj: &mut Project, target: &RawSprite) -> HashMap<String, VarId> {
+fn get_vars(proj: &mut Project, target: &RawSprite) -> Vec<(String, VarId, Option<Expr>)> {
     let mut expand = | (_, v): (&String, &Operand)| {
         let name = v.unwrap_var();
-        (name.to_string(), proj.next_var(name, true))
+        let val = v.var_default_opt();
+        (name.to_string(), proj.next_var(name, true), val)
     };
-    let mut a: HashMap<String, VarId> = target.variables.iter().map(&mut expand).collect();
+    let mut a: Vec<_> = target.variables.iter().map(&mut expand).collect();
     a.extend(target.lists.iter().map(&mut expand));
-    println!("vars: {a:?}");
     a
 }
 
@@ -63,6 +66,7 @@ struct Parser<'src> {
     project: &'src mut Project,
     target: &'src RawSprite,
     fields: HashMap<String, VarId>,
+    field_defaults: HashMap<VarId, Option<Expr>>, // TODO: merge with fields
     globals: &'src HashMap<String, VarId>,
     args_by_name: HashMap<String, VarId>,
     procedures: HashMap<String, ProcProto<'src>>,
@@ -137,10 +141,18 @@ impl<'src> Parser<'src> {
             self.needs_async = false;
         }
 
+        let mut fields = vec![];
+        let mut field_defaults = vec![];
+        for v in self.fields.values().copied() {
+            fields.push(v);
+            field_defaults.push(self.field_defaults.get(&v).unwrap().clone());
+        }
+
         Sprite {
             scripts: functions,
             procedures,
-            fields: self.fields.values().copied().collect(),
+            fields,
+            field_defaults,
             name: self.target.name.clone(),
             is_stage: self.target.isStage,
             is_singleton: true,
