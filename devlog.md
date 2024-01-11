@@ -1,4 +1,6 @@
 
+TODO: impl Try for IoAction for functions that only optionally return an io action. 
+
 ## TODO: porting tests
 
 It's such a pain to use the gui so need to add everything im using to scratch-compiler. 
@@ -17,6 +19,36 @@ TODO: why are my egui events super sluggish in wasm build? must be something wro
 - when sprite clicked 
 - mouse down, mouse x, mouse y, key down 
 - touching
+
+## Fixing Quicksort (Jan 11)
+
+Fixed missing default value when its a string (list_length was "200000").
+TODO: Thier validate function reads off the beginning of the list and relies on empty comparing less than everything, 
+including negatives. So empty as a number is negative infinity? But empty minus a number its treated as 0. 
+But its a special zero that's lower than anything else. 
+Temp hack around that by just starting the loop at 2 and stopping 1 early. 
+
+Average: (mine_release_nolto=0.062s), (mine_release_lto=0.056s), (turbowarp=0.050s), (scratch=5.745s). 
+So I'm ~11% slower than turbowarp and ~102x as fast as scratch. 
+
+The sort function isn't even async so improving my compilation there won't help. 
+I really hope if I can improve type inference enough to make that list not polymorphic it will get better. 
+For this kind of number crunching with no allocation it would make sense to me if v8's jit and llvm were the same. 
+
+To validate that theory, manually replace all the as_num in fast() with trusted_as_num which used 
+unsafe unreachable_unchecked if the poly is not the Num varient. Now mine_release_lto=0.051s. 
+So that's a worthy quest. Just to make sure, I also tried inline(always) on as_num which was slightly slower than original. Compiler wasn't able to prove the branch was never taken. 
+And that's still with each list element being 5 (?) words instead of 1 so 
+if I can actually make it a List(f64) there should be some cache locality benifits too. 
+
+```rust
+pub fn trusted_as_num(&self) -> f64 {
+    match self {
+        Poly::Num(n) => *n,
+        _ => unsafe { unreachable_unchecked() },
+    }
+}
+```
 
 ## Quicksort (Jan 9)
 
@@ -46,10 +78,12 @@ i was emiting var ids for globals seperately but then parsing it as a normal spr
 
 Added Features
 - need to parse default list values.
-- TODO: emit defaults
 - sensing_dayssince2000. TODO: use right epoch instead of unix one
 - temp ui button for sending click event to sprite. TODO: real bounding box
-- TODO: default costume size for tres (i removed my hack)
+- emit defaults. rustc really can't deal with my 200k vec literal of floats. had to put it in a string and parse at runtime which feels a bit silly. TODO: use include_bytes instead of parsing a string. 
+
+TODO: seperate file for data (defaults + var names + var getters/setters)
+TODO: default costume size for tres 
 
 ## Collapsing Futures (Jan 9)
 

@@ -86,7 +86,7 @@ impl Default for SpriteBase {
             pen: Default::default(),
             last_answer: "".to_string(),
             costume: 0,
-            size_frac: 1.0,  // TODO: does custom json have a scale?
+            size_frac: 2.0,  // TODO: does custom json have a scale?
             hidden: false,
         }
     }

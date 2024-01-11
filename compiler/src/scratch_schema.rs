@@ -243,6 +243,7 @@ impl Operand {
 
     pub fn var_default_opt(&self) -> Option<Expr> {
         match self {
+            Operand::ArgName(_, val) => Some(Expr::Literal(format!("{val}"))),
             Operand::VarF(_, val) => Some(Expr::Literal(format!("{val}"))),
             Operand::VarNum(_, val) => Some(Expr::Literal(format!("{val}"))),
             Operand::ListDefault(_, nums) => if nums.is_empty() {

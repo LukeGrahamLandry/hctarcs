@@ -597,6 +597,8 @@ impl RustValue {
         } else if self.ty == SType::ListPoly {
             // TODO: assert one entry
             return rval(SType::Poly, format!("{}[1.0]", self.text)).coerce(want);
+        } else if *want == SType::Bool && self.text == "(0f64)" { // TODO: HACK
+                return rval(SType::Bool, format!("false"));
         } else {
             panic!("coerce want {:?} but found {self:?}", want);
         }
