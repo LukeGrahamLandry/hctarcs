@@ -1,4 +1,5 @@
 #![feature(trait_upcasting)]  // unfortunate that i need nightly
+#![feature(try_trait_v2)]
 
 use std::collections::{VecDeque};
 use std::fmt::Debug;
@@ -330,7 +331,7 @@ impl<S: ScratchProgram<R>, R: RenderBackend<S> + 'static> World<S, R> {
                         }
                         IoAction::FutMachine(mut f, name, state) => {
                             // TODO: this doesnt push a CallMarker since that's redundant now. Instead, make StopCurrentScript just pop to a FutMachine. (done but not tested)
-                            let (action, state) = f(ctx, custom, state);
+                            let FutRes(action, state) = f(ctx, custom, state);
                             if let Some(state) = state {  // c.next is a stack, so push continuation first
                                 c.next.push(IoAction::FutMachine(f, name, state));
                             }  // else, that function is finished.

@@ -7,7 +7,7 @@ use std::fmt::{Debug, Formatter};
 use std::hint::black_box;
 use std::mem::{size_of, size_of_val};
 use std::num::NonZeroU16;
-use std::ops::Add;
+use std::ops::{Add, ControlFlow, FromResidual, Try};
 use std::pin::{Pin, pin};
 use std::time::{Duration};
 use crate::{FrameCtx, RenderBackend, ScratchProgram, Trigger, World};
@@ -49,7 +49,7 @@ pub type DbgId = ();
 pub type FutMachine<S, R> = dyn FnMut(&mut FrameCtx<S, R>, &mut dyn Any, NonZeroU16) -> FutRes<S, R>;
 // Storing the state outside in the runtime means functions with no args (and no loops) don't need to allocate.
 // And that the debugger can show where you are in the function.
-pub type FutRes<S, R> = (IoAction<S, R>, Option<NonZeroU16>);
+pub struct FutRes<S: ScratchProgram<R>, R: RenderBackend<S>>(pub IoAction<S, R>, pub Option<NonZeroU16>);
 
 #[derive(Debug)]
 pub struct Script<S: ScratchProgram<R>, R: RenderBackend<S>>  {
@@ -115,4 +115,26 @@ pub fn fut_a<S, R, F>(name: &'static str, f: F) -> IoAction<S, R>
           F: FnMut(&mut FrameCtx<S, R>, &mut dyn Any, NonZeroU16) -> FutRes<S, R> + 'static
 {
     IoAction::FutMachine(Box::new(f), name, state!(1))
+}
+
+impl<S: ScratchProgram<R>, R: RenderBackend<S>> Try for FutRes<S, R> {
+    type Output = ();
+    type Residual = FutRes<S, R>;
+
+    fn from_output(output: Self::Output) -> Self {
+        todo!()
+    }
+
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match &self.0 {
+            IoAction::None => ControlFlow::Continue(()),
+            _ => ControlFlow::Break(self),
+        }
+    }
+}
+
+impl<S: ScratchProgram<R>, R: RenderBackend<S>> FromResidual for FutRes<S, R> {
+    fn from_residual(residual: <Self as Try>::Residual) -> Self {
+        residual
+    }
 }

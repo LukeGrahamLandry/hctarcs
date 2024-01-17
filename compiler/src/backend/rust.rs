@@ -912,7 +912,7 @@ impl FutMachine {
                     format!("{{ {src}\ns = {}; continue; }}", next + 1)
                 }
                 FutBranch::Basic(src, next) => {
-                    format!("return ({{ {src} }}, Some(state!({})))", next + 1)
+                    format!("{{ s = {0};\nFutRes({{ {src} }}, Some(state!({0})))?;\ncontinue; }}", next + 1)
                 }
                 FutBranch::Branch { cond, if_true, if_false } => {
                     format!("{{ let __cond = {cond};\ns = if __cond {{ {} }} else {{ {} }};\ncontinue; }}", if_true.first+1, if_false.first+1)
@@ -931,7 +931,7 @@ impl FutMachine {
             loop {{
                  match s {{
                     {branches}
-                    {last} => return (IoAction::None, None),
+                    {last} => return FutRes(IoAction::None, None),
                     _ => unreachable!(),
                 }}
             }}
@@ -944,8 +944,8 @@ impl FutMachine {
         assert_eq!(self.branches.len(), 1);
         let b = self.branches.into_iter().next().unwrap();
         let body = match b {
-            FutBranch::BasicNone(src, _) => format!("{src}\nreturn (IoAction::None, None)"),
-            FutBranch::Basic(src, _) => format!("return ({{ {src} }}, None)"),
+            FutBranch::BasicNone(src, _) => format!("{src}\nreturn FutRes(IoAction::None, None)"),
+            FutBranch::Basic(src, _) => format!("return FutRes({{ {src} }}, None)"),
             FutBranch::Branch { .. } | FutBranch::BackPatch => unreachable!(),
         };
 
