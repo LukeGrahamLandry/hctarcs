@@ -18,7 +18,6 @@ const my_tests: &[T] = &[
     ];
 
 // TODO: recompile/fetch the src files as needed
-// TODO: add tres once async works (rn it would just hang waiting for input)
 const vendor_tests: &[T] = &[
     T { name: "linrays", deny_async: true, deny_poly: true },
     T { name: "tres", deny_async: false, deny_poly: false },
@@ -34,14 +33,15 @@ fn first_images() -> anyhow::Result<()> {
     env::set_current_dir("..")?;
     println!("{:?}", env::current_dir());
 
-    // TODO: fix size so dont include the debug ui
-    let (view_w, view_h) = (480 * 2, 360 * 2);
+    // TODO: make disabling "inspect" feature also remove the padding around the view area instead of hard-coding a crop size here
+    let (view_w, view_h) = (480, 360);
     let (w, h) = (240usize, 180usize);
     let mut image = Image::new((w * my_tests.len().max(vendor_tests.len())) as u32, (h * 3) as u32, Rgb::black());
 
     // TODO: threads? most time is spent waiting on cargo
-    // TODO: just log failures in the loop so you can see them all
-    // TODO: run fmt if a test fails
+    // TODO: just log failures in the loop so you can see them all (instead of asserting)
+    // TODO: run fmt if a test fails so its easier to debug
+    // TODO: async tests that dont rely on sleeping so it can all run in the first frame
     for (y, tests) in [my_tests, vendor_tests, temp_tests].iter().enumerate() {
         for (x, test) in tests.iter().enumerate() {
             run(test.opts())?;

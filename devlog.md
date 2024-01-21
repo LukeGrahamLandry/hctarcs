@@ -20,6 +20,10 @@ TODO: why are my egui events super sluggish in wasm build? must be something wro
 - mouse down, mouse x, mouse y, key down 
 - touching
 
+## Attempt Try Trait (Jan 17)
+
+
+
 ## Fixing Quicksort (Jan 11)
 
 Fixed missing default value when its a string (list_length was "200000").

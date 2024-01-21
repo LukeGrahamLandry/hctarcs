@@ -298,11 +298,8 @@ impl<'src> Emit<'src> {
             Stmt::CallCustom(name, args) => {
                 let is_async = self.target.lookup_proc(name).unwrap().needs_async;
                 let args = self.emit_args(args, &self.arg_types(name));
-                if is_async {  // TODO: untested
-                    // return RustStmt::IoAction(format!("({CALL_ACTION_ONCE} this.{name}({args}).done() }})))"));
-                    // TODO: this isnt closed, you do that later? cant have the .done ever because of args
+                if is_async {
                     return RustStmt::IoAction(format!("this.{name}({args})"));
-
                 } else {
                     format!("this.{name}(ctx, {args});\n")
                 }
@@ -443,14 +440,12 @@ impl<'src> Emit<'src> {
                     "true" | "false" => (s.parse::<bool>().unwrap().to_string(), SType::Bool),
                     "Infinity" => ("f64::INFINITY".to_string(), SType::Number),
                     "-Infinity" => ("f64::NEG_INFINITY".to_string(), SType::Number),
-                    "" => unreachable!(),
-                    _ => {
-                        match s.parse::<f64>() {
-                            Ok(v) => (format!("({}f64)", v), SType::Number),
-                            Err(_) => (format!("Str::from(\"{}\")", s.escape_default()), SType::Str),
-                        }
-
-                    }  // Brackets because I'm not sure of precedence for negative literals
+                    "" => unreachable!("Empty string should parse as Expr::Empty"),
+                    _ => match s.parse::<f64>() {
+                        // Brackets because I'm not sure of precedence for negative literals
+                        Ok(v) => (format!("({}f64)", v), SType::Number),
+                        Err(_) => (format!("Str::from(\"{}\")", s.escape_default()), SType::Str),
+                    }
                 };
                 rval(found, value)
             },

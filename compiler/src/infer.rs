@@ -1,6 +1,8 @@
 use crate::ast::{Expr, Project, Stmt, SType};
 use crate::parse::{expect_type, infer_type};
 
+// TODO: need to infer list element types as well (tried unsafe unwrap for quick sort benchmark and it was faster)
+// TODO: write down why this will always terminate
 pub fn run_infer(project: &mut Project) {
     // This feels sad and slow but it seems to not that big a difference and does improve inference coverage.
     let mut count = 0;
@@ -8,12 +10,11 @@ pub fn run_infer(project: &mut Project) {
     loop {
         let mut infer = Infer {
             project,
-            dirty: 0,
+            dirty: false,
             current_fn: None,
         };
         infer.run();
-        // TODO: track dirty for types. currently just tracking for aysnc.
-        if infer.dirty == 0 {
+        if !infer.dirty {
             if last {
                 break;
             }
@@ -31,7 +32,7 @@ pub fn run_infer(project: &mut Project) {
 
 struct Infer<'a> {
     project: &'a mut Project,
-    dirty: usize,
+    dirty: bool,
     // None if in a script since those are always async. In proc, (sprite_index, func_index)
     current_fn: Option<(usize, usize)>
 }
@@ -62,14 +63,15 @@ impl<'a> Infer<'a> {
             let proc = &mut self.project.targets[target_i].procedures[proc_i];
             if !proc.needs_async {
                 proc.needs_async = true;
-                self.dirty += 1;
+                self.dirty |= true;
             }
         }
     }
 
+    // This propagates expected types down the tree. ie. in (a + 10) we infer the variable a must be a number (or poly).
     fn infer_expr(&mut self, expr: Expr) {
         if let Some(t) = infer_type(self.project, &expr) {
-            expect_type(self.project, &expr, t);
+            self.dirty |= expect_type(self.project, &expr, t);
         }
     }
 
@@ -79,7 +81,8 @@ impl<'a> Infer<'a> {
         }
     }
 
-    // TODO: infer_expr the rest
+    // TODO: infer_expr the rest?
+    // TODO: don't bother inferring that something's a list here if its always done on parse anyway
     fn infer_stmt(&mut self, stmt: Stmt) {
         match stmt {
             Stmt::RepeatTimes(e, s) |
@@ -102,23 +105,23 @@ impl<'a> Infer<'a> {
             Stmt::SetGlobal(v, e) => {
                 self.infer_expr(e.clone());
                 if let Some(t) = infer_type(self.project, &e) {
-                    self.project.expect_type(v, t);
+                    self.dirty |= self.project.expect_type(v, t);
                 }
             }
             Stmt::ListSet(_, v, i, val) => {
-                self.project.expect_type(v, SType::ListPoly);
+                self.dirty |= self.project.expect_type(v, SType::ListPoly);
                 self.infer_expr(i);
                 self.infer_expr(val);
             }
             Stmt::ListPush(_, v, e)  => {
-                self.project.expect_type(v, SType::ListPoly);
+                self.dirty |= self.project.expect_type(v, SType::ListPoly);
                 self.infer_expr(e);
             }
             Stmt::ListClear(_, v) => {
-                self.project.expect_type(v, SType::ListPoly);
+                self.dirty |= self.project.expect_type(v, SType::ListPoly);
             }
             Stmt::ListRemoveIndex(_, v, i) => {
-                self.project.expect_type(v, SType::ListPoly);
+                self.dirty |= self.project.expect_type(v, SType::ListPoly);
                 self.infer_expr(i);
             }
             Stmt::BuiltinRuntimeCall(_, args) => {
